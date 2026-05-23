@@ -7,6 +7,16 @@
 
         <title>{{ config('app.name', 'Ali-Safi') }} - {{ $pageTitle ?? 'Marketplace' }}</title>
 
+        <!-- Favicon - Using PWA icons -->
+        <link rel="icon" type="image/png" sizes="192x192" href="{{ asset('icons/icon-192x192.png') }}">
+        <link rel="icon" type="image/png" sizes="512x512" href="{{ asset('icons/icon-512x512.png') }}">
+        <link rel="apple-touch-icon" href="{{ asset('icons/icon-192x192.png') }}">
+        <link rel="shortcut icon" href="{{ asset('favicon.ico') }}" type="image/x-icon">
+
+        <!-- Fallback for older browsers -->
+        <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon-32x32.png') }}">
+        <link rel="icon" type="image/png" sizes="16x16" href="{{ asset('favicon-16x16.png') }}">
+
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=poppins:400,500,600,700&display=swap" rel="stylesheet" />
