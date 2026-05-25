@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\AdminPriceController;
 use App\Http\Controllers\Admin\AdminFinanceController;
 use App\Http\Controllers\Admin\AdminMpesaController;
 use App\Http\Controllers\Admin\AdminOrderAssignmentController;
+use App\Http\Controllers\Customer\DashboardController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
@@ -45,9 +46,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     // Customer routes
     Route::middleware(['user.type:customer'])->prefix('customer')->name('customer.')->group(function () {
-        Route::get('/dashboard', function () {
-            return view('customer.dashboard');
-        })->name('dashboard');
+        // Route::get('/dashboard', function () {
+        //     return view('customer.dashboard');
+        // })->name('dashboard');
+        Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
         
         Route::get('/products', [ProductController::class, 'index'])->name('products.index');
         Route::get('/products/{product}', [ProductController::class, 'show'])->name('products.show');
