@@ -17,6 +17,8 @@ use App\Http\Controllers\Admin\AdminRiderController;
 use App\Http\Controllers\Admin\AdminPriceController;
 use App\Http\Controllers\Admin\AdminFinanceController;
 use App\Http\Controllers\Admin\AdminMpesaController;
+use App\Http\Controllers\Admin\AdminOrderAssignmentController;
+use Illuminate\Support\Facades\Route;
 
 // Public routes
 Route::get('/', function () {
