@@ -10,7 +10,8 @@ const STATIC_ASSETS = [
   '/offline',
   '/css/app.css',
   '/js/app.js',
-  '/favicon.ico'
+  '/favicon.ico',
+  '/sounds/alarm_sound.mp3'
 ];
 
 // API endpoints to cache (GET only)
@@ -52,58 +53,44 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - network first with cache fallback for HTML, cache first for assets
+// Fetch event - network first with cache fallback
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
   
-  // Skip non-GET requests and Chrome extension requests
   if (request.method !== 'GET' || url.protocol === 'chrome-extension:') {
     return;
   }
   
-  // Handle API requests (GET only)
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(handleApiRequest(request));
     return;
   }
   
-  // Handle HTML navigation requests
   if (request.mode === 'navigate') {
     event.respondWith(handleNavigationRequest(request));
     return;
   }
   
-  // Handle static assets (images, CSS, JS)
   if (isStaticAsset(url.pathname)) {
     event.respondWith(handleStaticAsset(request));
     return;
   }
   
-  // Default: Network first, cache fallback
   event.respondWith(networkFirst(request));
 });
 
-// Handle API requests - Network first, cache for offline
 async function handleApiRequest(request) {
   try {
     const response = await fetch(request.clone());
-    
-    // Cache successful API responses
     if (response && response.status === 200) {
       const cache = await caches.open(DYNAMIC_CACHE_NAME);
       cache.put(request, response.clone());
     }
-    
     return response;
   } catch (error) {
-    // Try cache for API requests
     const cachedResponse = await caches.match(request);
-    if (cachedResponse) {
-      return cachedResponse;
-    }
-    
-    // Return error response
+    if (cachedResponse) return cachedResponse;
     return new Response(JSON.stringify({
       error: 'You are offline. Please check your internet connection.',
       offline: true
@@ -114,52 +101,36 @@ async function handleApiRequest(request) {
   }
 }
 
-// Handle navigation requests - Network first, offline fallback
 async function handleNavigationRequest(request) {
   try {
     const response = await fetch(request.clone());
-    
-    // Cache successful responses
     if (response && response.status === 200) {
       const cache = await caches.open(DYNAMIC_CACHE_NAME);
       cache.put(request, response.clone());
     }
-    
     return response;
   } catch (error) {
-    // Try cache for navigation
     const cachedResponse = await caches.match(request);
-    if (cachedResponse) {
-      return cachedResponse;
-    }
-    
-    // Return offline page
+    if (cachedResponse) return cachedResponse;
     return caches.match('/offline');
   }
 }
 
-// Handle static assets - Cache first, network fallback
 async function handleStaticAsset(request) {
   const cachedResponse = await caches.match(request);
-  if (cachedResponse) {
-    return cachedResponse;
-  }
+  if (cachedResponse) return cachedResponse;
   
   try {
     const response = await fetch(request.clone());
-    
     if (response && response.status === 200) {
       const cache = await caches.open(STATIC_CACHE_NAME);
       cache.put(request, response.clone());
     }
-    
     return response;
   } catch (error) {
-    // Return placeholder for images
     if (request.destination === 'image') {
       return caches.match('/images/placeholder.png');
     }
-    
     return new Response('Resource not available offline', {
       status: 404,
       statusText: 'Not Found'
@@ -167,23 +138,17 @@ async function handleStaticAsset(request) {
   }
 }
 
-// Network first strategy
 async function networkFirst(request) {
   try {
     const response = await fetch(request.clone());
-    
     if (response && response.status === 200) {
       const cache = await caches.open(DYNAMIC_CACHE_NAME);
       cache.put(request, response.clone());
     }
-    
     return response;
   } catch (error) {
     const cachedResponse = await caches.match(request);
-    if (cachedResponse) {
-      return cachedResponse;
-    }
-    
+    if (cachedResponse) return cachedResponse;
     return new Response('Network error', {
       status: 408,
       statusText: 'Request Timeout'
@@ -191,9 +156,8 @@ async function networkFirst(request) {
   }
 }
 
-// Check if request is for static asset
 function isStaticAsset(pathname) {
-  const staticExtensions = ['.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp'];
+  const staticExtensions = ['.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.webp', '.mp3'];
   return staticExtensions.some(ext => pathname.endsWith(ext));
 }
 
@@ -204,7 +168,6 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-// Sync pending orders when back online
 async function syncOrders() {
   const cache = await caches.open('pending-orders');
   const requests = await cache.keys();
@@ -214,8 +177,6 @@ async function syncOrders() {
       const response = await fetch(request);
       if (response && response.status === 201) {
         await cache.delete(request);
-        
-        // Notify user
         const clients = await self.clients.matchAll();
         clients.forEach(client => {
           client.postMessage({
@@ -230,7 +191,7 @@ async function syncOrders() {
   }
 }
 
-// Push notification handler
+// ANNOYING PUSH NOTIFICATION HANDLER
 self.addEventListener('push', (event) => {
   let data = {};
   
@@ -239,60 +200,113 @@ self.addEventListener('push', (event) => {
       data = event.data.json();
     } catch (e) {
       data = {
-        title: 'Ali-Safi',
+        title: '🔴 ALI-SAFI URGENT ALERT 🔴',
         body: event.data.text(),
         icon: '/icons/icon-192x192.png'
       };
     }
   }
   
+  // Aggressive vibration pattern for mobile
+  const vibratePattern = data.vibrate || [500, 200, 500, 200, 1000, 200, 500, 200, 500, 200, 2000];
+  
   const options = {
-    body: data.body || 'You have a new update from Ali-Safi',
-    icon: data.icon || '/icons/icon-192x192.png',
+    body: data.body || '🔴 URGENT: Action required immediately! 🔴',
+    icon: data.icon || '/icons/icon-512x512.png',
     badge: '/icons/badge-72x72.png',
-    vibrate: [200, 100, 200],
+    vibrate: vibratePattern,
+    sound: '/sounds/alarm_sound.mp3',
+    silent: false,
+    requireInteraction: true, // User must interact with notification
+    renotify: true, // Will notify even if already shown
+    tag: data.tag || 'urgent-ali-safi',
     data: {
       url: data.url || '/',
-      dateOfArrival: Date.now()
+      orderId: data.orderId,
+      type: data.type,
+      timestamp: Date.now()
     },
     actions: [
       {
         action: 'view',
-        title: 'View'
+        title: '🔥 VIEW NOW 🔥'
       },
       {
-        action: 'close',
-        title: 'Close'
+        action: 'snooze',
+        title: '⏰ Remind me in 1 min'
+      },
+      {
+        action: 'dismiss',
+        title: '❌ Dismiss'
       }
     ]
   };
   
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Ali-Safi', options)
+    self.registration.showNotification(data.title || '🔴 ALI-SAFI URGENT ALERT 🔴', options)
   );
 });
 
-// Notification click handler
+// Notification click handler with aggressive reminders
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   
-  const urlToOpen = event.notification.data?.url || '/';
-  
-  event.waitUntil(
-    self.clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true
-    }).then((clientList) => {
-      // Check if there's already a window/tab open with the target URL
-      for (const client of clientList) {
-        if (client.url === urlToOpen && 'focus' in client) {
-          return client.focus();
+  if (event.action === 'snooze') {
+    // Send reminder after 1 minute
+    setTimeout(() => {
+      self.registration.showNotification(event.notification.title, {
+        body: '⏰ REMINDER: Action still required! Please respond immediately!',
+        icon: '/icons/icon-512x512.png',
+        vibrate: [500, 500, 500],
+        sound: '/sounds/alarm_sound.mp3',
+        requireInteraction: true,
+        data: event.notification.data
+      });
+    }, 60000);
+  } else if (event.action === 'dismiss') {
+    // Log dismissal but do nothing else
+    console.log('Notification dismissed');
+  } else {
+    // Open the URL
+    const urlToOpen = event.notification.data?.url || '/';
+    
+    event.waitUntil(
+      self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true
+      }).then((clientList) => {
+        for (const client of clientList) {
+          if (client.url === urlToOpen && 'focus' in client) {
+            return client.focus();
+          }
         }
-      }
-      // If not, open a new window/tab
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(urlToOpen);
-      }
-    })
-  );
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(urlToOpen);
+        }
+      })
+    );
+  }
 });
+
+// Handle background sync for pending notifications
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'check-notifications') {
+    event.waitUntil(checkPendingNotifications());
+  }
+});
+
+async function checkPendingNotifications() {
+  const cache = await caches.open('pending-notifications');
+  const pending = await cache.keys();
+  
+  for (const request of pending) {
+    try {
+      const response = await fetch(request);
+      if (response.ok) {
+        await cache.delete(request);
+      }
+    } catch (error) {
+      console.error('Failed to sync notification:', error);
+    }
+  }
+}

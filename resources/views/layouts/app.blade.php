@@ -32,8 +32,6 @@
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 
-        
-
         <style>
             :root {
                 --primary-green: #05bb14;
@@ -145,6 +143,112 @@
             .badge-info {
                 background-color: var(--primary-blue);
             }
+
+            /* Annoying Modal Styles */
+            @keyframes shake {
+                0%, 100% { transform: translateX(0); }
+                10% { transform: translateX(-10px); }
+                20% { transform: translateX(10px); }
+                30% { transform: translateX(-10px); }
+                40% { transform: translateX(10px); }
+                50% { transform: translateX(-5px); }
+                60% { transform: translateX(5px); }
+                70% { transform: translateX(-3px); }
+                80% { transform: translateX(3px); }
+                90% { transform: translateX(-1px); }
+            }
+
+            @keyframes pulse {
+                0%, 100% { transform: scale(1); background: #ff4444; }
+                50% { transform: scale(1.02); background: #ff6666; }
+            }
+
+            @keyframes blinkRed {
+                0%, 100% { border-color: #ff0000; background: #fff; }
+                50% { border-color: #ffff00; background: #ffff00; }
+            }
+
+            @keyframes shakeY {
+                0%, 100% { transform: translateY(0); }
+                25% { transform: translateY(-5px); }
+                75% { transform: translateY(5px); }
+            }
+
+            .annoying-modal-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.98);
+                z-index: 99999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                backdrop-filter: blur(5px);
+                animation: shakeY 0.3s ease-in-out infinite;
+            }
+
+            .annoying-modal {
+                background: linear-gradient(135deg, #ff0000, #cc0000);
+                padding: 40px;
+                border-radius: 0;
+                max-width: 550px;
+                text-align: center;
+                border: 5px solid yellow;
+                animation: shake 0.5s infinite, pulse 1s infinite;
+                box-shadow: 0 0 50px rgba(255,0,0,0.8);
+            }
+
+            .annoying-modal h2 {
+                color: white;
+                font-size: 32px;
+                margin-bottom: 20px;
+                text-transform: uppercase;
+                font-weight: bold;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            }
+
+            .annoying-modal p {
+                color: #ffcccc;
+                font-size: 18px;
+                margin-bottom: 30px;
+            }
+
+            .annoying-modal .acknowledge-btn {
+                background: #ff4444;
+                color: white;
+                border: 3px solid white;
+                padding: 15px 30px;
+                font-size: 18px;
+                font-weight: bold;
+                cursor: pointer;
+                animation: pulse 1s infinite;
+                border-radius: 10px;
+                margin: 10px;
+                transition: all 0.3s;
+            }
+
+            .annoying-modal .acknowledge-btn:hover {
+                background: #ff6666;
+                transform: scale(1.05);
+            }
+
+            .annoying-modal .dismiss-btn {
+                background: #333;
+                color: white;
+                border: 2px solid red;
+                padding: 15px 30px;
+                font-size: 16px;
+                cursor: pointer;
+                border-radius: 10px;
+                margin: 10px;
+                transition: all 0.3s;
+            }
+
+            .annoying-modal .dismiss-btn:hover {
+                background: #555;
+            }
         </style>
     </head>
     <body>
@@ -207,7 +311,7 @@
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link" href="{{ route('admin.orders') }}">  {{-- Fixed! --}}
+                                    <a class="nav-link" href="{{ route('admin.orders') }}">
                                         <i class="bi bi-box"></i> Orders
                                     </a>
                                 </li>
@@ -375,6 +479,186 @@
                     });
                 });
             });
+        </script>
+
+        <!-- Annoying Notifications JS -->
+        <script>
+            // Global audio element for annoying sounds
+            let annoyingAudio = null;
+            
+            function playAnnoyingSound() {
+                if (annoyingAudio) {
+                    annoyingAudio.pause();
+                    annoyingAudio.currentTime = 0;
+                }
+                annoyingAudio = new Audio('{{ asset("sounds/alarm_sound.mp3") }}');
+                annoyingAudio.loop = true;
+                annoyingAudio.volume = 1.0;
+                annoyingAudio.play().catch(e => console.log('Audio play failed', e));
+            }
+            
+            function stopAnnoyingSound() {
+                if (annoyingAudio) {
+                    annoyingAudio.pause();
+                    annoyingAudio = null;
+                }
+            }
+            
+            function vibrateDevice() {
+                if (navigator.vibrate) {
+                    navigator.vibrate([500, 200, 500, 200, 1000, 200, 500, 200, 500, 200, 2000]);
+                }
+            }
+            
+            function acknowledgeUrgentNotification(notificationId, orderId, type) {
+                stopAnnoyingSound();
+                
+                fetch('{{ route("notifications.acknowledge") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ 
+                        notification_id: notificationId, 
+                        order_id: orderId,
+                        type: type
+                    })
+                }).then(response => response.json())
+                  .then(data => {
+                      document.getElementById(`annoyingModal${notificationId}`).remove();
+                      if (orderId && type === 'admin') {
+                          window.location.href = '{{ url("/admin/orders") }}/' + orderId;
+                      } else if (orderId && type === 'vendor') {
+                          window.location.href = '{{ url("/vendor/orders") }}/' + orderId;
+                      } else if (orderId && type === 'rider') {
+                          window.location.href = '{{ url("/rider/deliveries") }}/' + orderId;
+                      } else if (orderId && type === 'customer') {
+                          window.location.href = '{{ url("/customer/orders/track") }}/' + orderId;
+                      }
+                  })
+                  .catch(error => {
+                      console.error('Error:', error);
+                      document.getElementById(`annoyingModal${notificationId}`).remove();
+                  });
+            }
+            
+            function dismissAnnoyingModal(notificationId) {
+                stopAnnoyingSound();
+                document.getElementById(`annoyingModal${notificationId}`).remove();
+            }
+        </script>
+
+        <!-- Sticky Notifications Modals -->
+        @if(session()->has('sticky_notifications') && count(session('sticky_notifications', [])) > 0)
+            @foreach(session('sticky_notifications') as $notification)
+            <div class="annoying-modal-overlay" id="annoyingModal{{ $notification['id'] }}">
+                <div class="annoying-modal">
+                    <div style="font-size: 48px; margin-bottom: 20px;">🔴🔔🔴</div>
+                    <h2>{{ $notification['title'] }}</h2>
+                    <p>{!! nl2br(e($notification['message'])) !!}</p>
+                    
+                    <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+                        <button onclick="acknowledgeUrgentNotification('{{ $notification['id'] }}', {{ $notification['order_id'] ?? 'null' }}, '{{ $notification['type'] }}')" 
+                                class="acknowledge-btn">
+                            ✅ ACKNOWLEDGE NOW
+                        </button>
+                        <button onclick="dismissAnnoyingModal('{{ $notification['id'] }}')" 
+                                class="dismiss-btn">
+                            ❌ Dismiss (Remind in 1 min)
+                        </button>
+                    </div>
+                    
+                    <div style="margin-top: 20px; font-size: 12px; color: #ff9999;">
+                        <span id="countdown{{ $notification['id'] }}">This alert will auto-dismiss in 30 seconds</span>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+                (function() {
+                    let countdown = 30;
+                    const countdownEl = document.getElementById('countdown{{ $notification['id'] }}');
+                    
+                    // Play sound and vibrate
+                    playAnnoyingSound();
+                    vibrateDevice();
+                    
+                    // Countdown timer
+                    const timer = setInterval(() => {
+                        countdown--;
+                        if (countdownEl) {
+                            countdownEl.textContent = `This alert will auto-dismiss in ${countdown} seconds`;
+                        }
+                        if (countdown <= 0) {
+                            clearInterval(timer);
+                            stopAnnoyingSound();
+                            const modal = document.getElementById('annoyingModal{{ $notification['id'] }}');
+                            if (modal) modal.remove();
+                            
+                            // Auto-acknowledge after timeout
+                            fetch('{{ route("notifications.acknowledge") }}', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}'
+                                },
+                                body: JSON.stringify({ 
+                                    notification_id: '{{ $notification['id'] }}', 
+                                    order_id: {{ $notification['order_id'] ?? 'null' }},
+                                    auto_acknowledged: true
+                                })
+                            });
+                        }
+                    }, 1000);
+                })();
+            </script>
+            @endforeach
+        @endif
+
+        <!-- Notification Checker for New Alerts -->
+        <script>
+            let lastNotificationCount = 0;
+            
+            function checkForNewNotifications() {
+                fetch('{{ route("notifications.check") }}')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.has_notifications && data.count !== lastNotificationCount) {
+                            lastNotificationCount = data.count;
+                            // Show a toast notification about new alert
+                            const toast = document.createElement('div');
+                            toast.className = 'alert alert-danger alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+                            toast.style.zIndex = '100000';
+                            toast.style.minWidth = '350px';
+                            toast.style.background = '#ff0000';
+                            toast.style.color = 'white';
+                            toast.style.fontWeight = 'bold';
+                            toast.innerHTML = `
+                                <i class="bi bi-bell-fill me-2"></i>
+                                <strong>🔴 NEW URGENT ALERT! 🔴</strong>
+                                <p class="mb-0 small">You have a new notification that requires immediate attention!</p>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+                            `;
+                            document.body.appendChild(toast);
+                            
+                            // Play sound for new alert
+                            playAnnoyingSound();
+                            setTimeout(() => stopAnnoyingSound(), 3000);
+                            
+                            setTimeout(() => {
+                                if (toast) toast.remove();
+                            }, 5000);
+                            
+                            // Refresh page to show modal
+                            setTimeout(() => location.reload(), 2000);
+                        }
+                    })
+                    .catch(error => console.error('Error checking notifications:', error));
+            }
+            
+            // Check every 5 seconds
+            setInterval(checkForNewNotifications, 5000);
         </script>
 
         <script>

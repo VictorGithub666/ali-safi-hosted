@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Models\Order;
 use App\Models\Rider;
 use App\Models\AdminRiderFee;
+use App\Events\RiderAssigned;
 use App\Models\OrderTracking;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
@@ -257,6 +258,7 @@ class AdminOrderAssignmentController extends Controller
                 'status' => 'picked_up',
                 'delivery_fee' => $totalRiderFee  // ← THIS IS THE FIX
             ]);
+            event(new RiderAssigned($order));
 
             Log::info('Order updated', [
                 'order_id' => $order->id,

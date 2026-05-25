@@ -19,6 +19,7 @@ use App\Http\Controllers\Admin\AdminFinanceController;
 use App\Http\Controllers\Admin\AdminMpesaController;
 use App\Http\Controllers\Admin\AdminOrderAssignmentController;
 use App\Http\Controllers\Customer\DashboardController;
+use App\Http\Controllers\NotificationController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
@@ -29,7 +30,9 @@ Route::get('/', function () {
 // Public vendor shop route
 Route::get('/shop/{vendor}', [ProductController::class, 'vendorShop'])->name('shop.vendor');
 
-
+// Notification routes
+Route::post('/notifications/acknowledge', [NotificationController::class, 'acknowledge'])->middleware('auth')->name('notifications.acknowledge');
+Route::get('/notifications/check', [NotificationController::class, 'check'])->middleware('auth')->name('notifications.check');
 
 // Authentication routes
 Route::middleware('guest')->group(function () {
@@ -46,14 +49,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     // Customer routes
     Route::middleware(['user.type:customer'])->prefix('customer')->name('customer.')->group(function () {
-        // Route::get('/dashboard', function () {
-        //     return view('customer.dashboard');
-        // })->name('dashboard');
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
         
         Route::get('/products', [ProductController::class, 'index'])->name('products.index');
         Route::get('/products/{product}', [ProductController::class, 'show'])->name('products.show');
-        // Inside customer routes group - add this line
         Route::post('/nearby-shops', [ProductController::class, 'getNearbyShops'])->name('products.nearby');
         
         Route::get('/cart', [CartController::class, 'index'])->name('cart');
@@ -78,13 +77,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     // Vendor routes
     Route::middleware(['user.type:vendor'])->prefix('vendor')->name('vendor.')->group(function () {
-        // Dashboard
         Route::get('/dashboard', [VendorDashboardController::class, 'index'])->name('dashboard');
-        
-        
         Route::post('/toggle-status', [VendorDashboardController::class, 'toggleStatus'])->name('toggle-status');
 
-        // Products CRUD
         Route::get('/products', [VendorProductController::class, 'index'])->name('products.index');
         Route::get('/products/create', [VendorProductController::class, 'create'])->name('products.create');
         Route::post('/products', [VendorProductController::class, 'store'])->name('products.store');
@@ -97,12 +92,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/products/toggle-availability', [VendorProductController::class, 'toggleAvailability'])->name('products.toggle-availability');
         Route::post('/update-location', [VendorDashboardController::class, 'updateLocation'])->name('update-location');
         
-        // Orders
         Route::get('/orders', [VendorOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/{order}', [VendorOrderController::class, 'show'])->name('orders.show');
         Route::patch('/orders/{order}/status', [VendorOrderController::class, 'updateStatus'])->name('orders.update-status');
         
-        // Earnings & Analytics
         Route::get('/earnings', [VendorDashboardController::class, 'earnings'])->name('earnings');
         Route::get('/analytics', [VendorDashboardController::class, 'analytics'])->name('analytics');
     });
@@ -110,7 +103,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Rider routes
     Route::middleware(['user.type:rider', 'ensure.rider.profile'])->prefix('rider')->name('rider.')->group(function () {
         Route::get('/dashboard', [DeliveryController::class, 'index'])->name('dashboard');
-
         Route::get('/dashboard/status', [DeliveryController::class, 'getDashboardStatus'])->name('dashboard.status');
         
         Route::get('/deliveries', [DeliveryController::class, 'index'])->name('deliveries');
@@ -127,41 +119,27 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
     // Admin routes
     Route::middleware(['user.type:admin'])->prefix('admin')->name('admin.')->group(function () {
-        // Dashboard
         Route::get('/dashboard', [AdminController::class, 'dashboard'])->name('dashboard');
-
-        
-
-        // Orders Management
         Route::get('/orders', [AdminController::class, 'orders'])->name('orders');
-       
         
-        // Customer Management (full CRUD)
         Route::resource('customers', AdminCustomerController::class);
         Route::post('/customers/{customer}/suspend', [AdminCustomerController::class, 'suspend'])->name('customers.suspend');
         Route::post('/customers/{customer}/activate', [AdminCustomerController::class, 'activate'])->name('customers.activate');
         
-        // Vendor Management (full CRUD)
         Route::resource('vendors', AdminVendorController::class);
         Route::post('/vendors/{vendor}/verify', [AdminVendorController::class, 'verify'])->name('vendors.verify');
         Route::post('/vendors/{vendor}/suspend', [AdminVendorController::class, 'suspend'])->name('vendors.suspend');
         Route::post('/vendors/{vendor}/activate', [AdminVendorController::class, 'activate'])->name('vendors.activate');
-
-        
-        // Rider Management (full CRUD)
-
         
         Route::resource('riders', AdminRiderController::class);
         Route::post('/riders/{rider}/verify', [AdminRiderController::class, 'verify'])->name('riders.verify');
         Route::post('/riders/{rider}/suspend', [AdminRiderController::class, 'suspend'])->name('riders.suspend');
         Route::post('/riders/{rider}/activate', [AdminRiderController::class, 'activate'])->name('riders.activate');
         
-        // Pricing Management
         Route::get('/prices/get-vendor-price', [AdminPriceController::class, 'getVendorPrice'])->name('prices.get-vendor-price');
         Route::resource('prices', AdminPriceController::class)->except(['show']);
         Route::post('/prices/bulk-update', [AdminPriceController::class, 'bulkUpdate'])->name('prices.bulk-update');
                         
-        // Financial Management
         Route::get('/finances/dashboard', [AdminFinanceController::class, 'dashboard'])->name('finances.dashboard');
         Route::get('/finances/margins', [AdminFinanceController::class, 'margins'])->name('finances.margins');
         Route::get('/finances/reports', [AdminFinanceController::class, 'reports'])->name('finances.reports');
@@ -170,7 +148,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/finances/sync', [AdminFinanceController::class, 'syncOrders'])->name('finances.sync');
         Route::get('/finances/download-simple-report', [AdminFinanceController::class, 'downloadSimpleReport'])->name('finances.download-simple-report');
         
-        // M-Pesa Payment Management
         Route::get('/mpesa/dashboard', [AdminMpesaController::class, 'dashboard'])->name('mpesa.dashboard');
         Route::get('/mpesa/transactions', [AdminMpesaController::class, 'index'])->name('mpesa.index');
         Route::get('/mpesa/transactions/{mpesaTransaction}', [AdminMpesaController::class, 'show'])->name('mpesa.show');
@@ -179,22 +156,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/mpesa/transactions/{mpesaTransaction}/confirm', [AdminMpesaController::class, 'confirmPayment'])->name('mpesa.confirm');
         Route::post('/mpesa/transactions/{mpesaTransaction}/resend-callback', [AdminMpesaController::class, 'resendCallback'])->name('mpesa.resend-callback');
         
-        // Order Assignment (Rider Assignment)
         Route::get('/orders/assignment', [AdminOrderAssignmentController::class, 'index'])->name('orders.assignment');
         Route::get('/orders/select-rider', [AdminOrderAssignmentController::class, 'getAvailableRiders'])->name('orders.select-rider');
         Route::post('/orders/assign', [AdminOrderAssignmentController::class, 'assign'])->name('orders.assign');
         Route::post('/orders/batch-assign', [AdminOrderAssignmentController::class, 'batchAssign'])->name('orders.batch-assign');
-         Route::get('/orders/{order}', [AdminController::class, 'show'])->name('orders.show');
+        Route::get('/orders/{order}', [AdminController::class, 'show'])->name('orders.show');
         Route::post('/orders/{order}/reassign', [AdminOrderAssignmentController::class, 'reassign'])->name('orders.reassign');
         Route::post('/orders/{order}/cancel-assignment', [AdminOrderAssignmentController::class, 'cancelAssignment'])->name('orders.cancel-assignment');
         
-        // Settings
         Route::get('/settings', [AdminController::class, 'settings'])->name('settings');
         Route::post('/settings', [AdminController::class, 'updateSettings'])->name('settings.update');
     });
 });
 
-// Location API routes (for cascading selects in checkout)
+// Location API routes
 Route::prefix('api/locations')->group(function () {
     Route::get('/counties', [LocationController::class, 'getCounties']);
     Route::get('/{county}/sub-counties', [LocationController::class, 'getSubCounties']);
@@ -211,7 +186,7 @@ Route::prefix('api/v1')->middleware('auth:sanctum')->group(function () {
     // API endpoints for mobile apps
 });
 
-// Offline fallback page (must be last route)
+// Offline fallback page
 Route::get('/offline', function () {
     return view('offline');
 })->name('offline');

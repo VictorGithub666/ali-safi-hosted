@@ -1,0 +1,99 @@
+{{-- resources/views/components/annoying-modal.blade.php --}}
+
+@if(session()->has('sticky_notifications'))
+    @foreach(session('sticky_notifications') as $notification)
+    <div class="annoying-modal-overlay" id="annoyingModal{{ $notification['id'] }}" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 99999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+        <div class="annoying-modal" style="background: #ff0000; padding: 40px; border-radius: 0; max-width: 500px; text-align: center; border: 5px solid yellow; animation: shake 0.5s infinite; box-shadow: 0 0 50px rgba(255,0,0,0.8);">
+            <div style="font-size: 48px; margin-bottom: 20px;">🔴🔔🔴</div>
+            <h2 style="color: white; font-size: 32px; margin-bottom: 20px; text-transform: uppercase; font-weight: bold;">{{ $notification['title'] }}</h2>
+            <p style="color: #ffcccc; font-size: 18px; margin-bottom: 30px;">{{ $notification['message'] }}</p>
+            
+            <div style="display: flex; gap: 20px; justify-content: center;">
+                <button onclick="acknowledgeUrgentNotification('{{ $notification['id'] }}', {{ $notification['order_id'] ?? 'null' }})" 
+                        style="background: #ff4444; color: white; border: 3px solid white; padding: 15px 30px; font-size: 18px; font-weight: bold; cursor: pointer; animation: pulse 1s infinite;">
+                    ✅ ACKNOWLEDGE NOW
+                </button>
+                <button onclick="dismissAnnoyingModal('{{ $notification['id'] }}')" 
+                        style="background: #333; color: white; border: 2px solid red; padding: 15px 30px; font-size: 16px; cursor: pointer;">
+                    ❌ Dismiss
+                </button>
+            </div>
+            
+            <div style="margin-top: 20px; font-size: 12px; color: #ff9999;">
+                <span id="countdown{{ $notification['id'] }}">This alert will auto-dismiss in 30 seconds</span>
+            </div>
+        </div>
+    </div>
+    
+    <audio id="alertSound{{ $notification['id'] }}" loop>
+        <source src="{{ asset('sounds/urgent-alert.mp3') }}" type="audio/mpeg">
+    </audio>
+    
+    <script>
+        (function() {
+            const modal = document.getElementById('annoyingModal{{ $notification['id'] }}');
+            const audio = document.getElementById('alertSound{{ $notification['id'] }}');
+            let countdown = 30;
+            const countdownEl = document.getElementById('countdown{{ $notification['id'] }}');
+            
+            // Play annoying sound
+            audio.volume = 1.0;
+            audio.play().catch(e => console.log('Audio play failed', e));
+            
+            // Vibrate if mobile
+            if (navigator.vibrate) {
+                navigator.vibrate([500, 300, 500, 300, 1000, 500, 300, 500, 300, 1000]);
+            }
+            
+            // Countdown timer
+            const timer = setInterval(() => {
+                countdown--;
+                if (countdownEl) {
+                    countdownEl.textContent = `This alert will auto-dismiss in ${countdown} seconds`;
+                }
+                if (countdown <= 0) {
+                    clearInterval(timer);
+                    audio.pause();
+                    modal.remove();
+                }
+            }, 1000);
+            
+            window.acknowledgeUrgentNotification = function(id, orderId) {
+                clearInterval(timer);
+                audio.pause();
+                document.getElementById(`annoyingModal${id}`).remove();
+                fetch('/notifications/acknowledge', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ notification_id: id, order_id: orderId })
+                });
+                if (orderId) {
+                    window.location.href = '/admin/orders/' + orderId;
+                }
+            };
+            
+            window.dismissAnnoyingModal = function(id) {
+                clearInterval(timer);
+                audio.pause();
+                document.getElementById(`annoyingModal${id}`).remove();
+            };
+        })();
+    </script>
+    @endforeach
+@endif
+
+<style>
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-10px); }
+        75% { transform: translateX(10px); }
+    }
+    
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); background: #ff6666; }
+    }
+</style>

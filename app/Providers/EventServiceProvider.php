@@ -10,6 +10,10 @@ use App\Listeners\SendAdminWhatsAppNotification;
 use App\Listeners\DeductProductStockOnDelivery;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
+use App\Listeners\NotifyVendorAnnoyingly;
+use App\Listeners\NotifyAdminAnnoyingly;
+use App\Listeners\NotifyRiderAnnoyingly;
+use App\Listeners\NotifyCustomerAnnoyingly;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 
 class EventServiceProvider extends ServiceProvider
@@ -22,11 +26,17 @@ class EventServiceProvider extends ServiceProvider
             SendEmailVerificationNotification::class,
         ],
         OrderStatusUpdated::class => [
+            NotifyAdminAnnoyingly::class,
+            NotifyCustomerAnnoyingly::class,
             DeductProductStockOnDelivery::class,
         ],
         OrderPlaced::class => [
             SendVendorWhatsAppNotification::class,
             SendAdminWhatsAppNotification::class,  // Add this line
+            NotifyVendorAnnoyingly::class,
+        ],
+        RiderAssigned::class => [
+            NotifyRiderAnnoyingly::class,
         ],
     ];
 
