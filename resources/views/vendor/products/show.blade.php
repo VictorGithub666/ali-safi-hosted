@@ -174,16 +174,6 @@
                                 </span>
                             </div>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <p class="text-muted mb-1">Availability</p>
-                            <p class="mb-0">
-                                @if($productData->is_available)
-                                    <span class="badge bg-success">Available for Purchase</span>
-                                @else
-                                    <span class="badge bg-danger">Not Available</span>
-                                @endif
-                            </p>
-                        </div>
                     </div>
                 </div>
             </div>
