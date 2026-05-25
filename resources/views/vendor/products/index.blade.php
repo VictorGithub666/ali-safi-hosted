@@ -58,7 +58,6 @@
                             <th>Price</th>
                             <th>Stock</th>
                             <th>Status</th>
-                            <th>Available</th>
                             <th style="width: 150px">Actions</th>
                         </tr>
                     </thead>
@@ -105,13 +104,6 @@
                                     @else
                                         <span class="badge bg-secondary">Inactive</span>
                                     @endif
-                                </td>
-                                <td>
-                                    <div class="form-check form-switch">
-                                        <input class="form-check-input availability-toggle" type="checkbox" 
-                                               data-product-id="{{ $product->id }}"
-                                               {{ $product->pivot->is_available ? 'checked' : '' }}>
-                                    </div>
                                 </td>
                                 <td>
                                     <a href="{{ route('vendor.products.show', $product) }}" 
