@@ -762,48 +762,42 @@
             let lastCheckTime = Date.now();
 
             function checkForNewNotifications() {
-                // Don't check if this is a customer page (optional)
-                // You can add logic to skip checking for customers if needed
-                
                 fetch('{{ route("notifications.check") }}')
                     .then(response => response.json())
                     .then(data => {
-                        if (data.has_notifications && data.count !== lastNotificationCount) {
-                            lastNotificationCount = data.count;
-                            
-                            // Show a toast notification about new alert
-                            const toast = document.createElement('div');
-                            toast.className = 'alert alert-danger alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
-                            toast.style.zIndex = '100000';
-                            toast.style.minWidth = '350px';
-                            toast.style.background = '#ff0000';
-                            toast.style.color = 'white';
-                            toast.style.fontWeight = 'bold';
-                            toast.innerHTML = `
-                                <i class="bi bi-bell-fill me-2"></i>
-                                <strong>🔴 NEW URGENT ALERT! 🔴</strong>
-                                <p class="mb-0 small">You have a new notification that requires immediate attention!</p>
-                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
-                            `;
-                            document.body.appendChild(toast);
-                            
-                            // Play sound for new alert
-                            playAnnoyingSound();
-                            setTimeout(() => stopAnnoyingSound(), 3000);
-                            
-                            setTimeout(() => {
-                                if (toast) toast.remove();
-                            }, 5000);
-                            
-                            // Refresh page to show modal after 2 seconds
-                            setTimeout(() => location.reload(), 2000);
+                        if (data.has_notifications && data.count > 0) {
+                            data.notifications.forEach(notification => {
+                                // Don't show if already on screen
+                                if (document.getElementById('annoyingModal' + notification.id)) return;
+
+                                // Build and inject the modal
+                                const overlay = document.createElement('div');
+                                overlay.className = 'annoying-modal-overlay';
+                                overlay.id = 'annoyingModal' + notification.id;
+                                overlay.innerHTML = `
+                                    <div class="annoying-modal">
+                                        <div style="font-size:48px;margin-bottom:20px;">🔴🔔🔴</div>
+                                        <h2>${notification.title}</h2>
+                                        <p>${notification.message.replace(/\n/g, '<br>')}</p>
+                                        <div style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap;">
+                                            <button onclick="acknowledgeUrgentNotification('${notification.id}', ${notification.order_id ?? 'null'}, '${notification.type}')"
+                                                    class="acknowledge-btn">✅ ACKNOWLEDGE NOW</button>
+                                            <button onclick="dismissAnnoyingModal('${notification.id}')"
+                                                    class="dismiss-btn">❌ Dismiss</button>
+                                        </div>
+                                    </div>`;
+                                document.body.appendChild(overlay);
+                                playAnnoyingSound();
+                                vibrateDevice();
+                            });
                         }
                     })
                     .catch(error => console.error('Error checking notifications:', error));
             }
 
-            // Check every 10 seconds instead of 5 to reduce load
+            // Keep polling every 10 seconds
             setInterval(checkForNewNotifications, 10000);
+            checkForNewNotifications(); // Also run immediately on page load
         </script>
 
         <script>

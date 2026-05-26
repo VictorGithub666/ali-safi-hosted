@@ -63,17 +63,42 @@ class NotificationController extends Controller
      */
     public function check(Request $request)
     {
+        $user = auth()->user();
+        
+        // Query DB for unread notifications for this user
+        $dbNotifications = \App\Models\Notification::where('user_id', $user->id)
+            ->where('is_read', false)
+            ->orderBy('created_at', 'desc')
+            ->take(5)
+            ->get()
+            ->map(function($n) {
+                return [
+                    'id'       => (string) $n->id,
+                    'title'    => $n->title,
+                    'message'  => $n->message,
+                    'type'     => $n->data['original_type'] ?? $n->type,
+                    'order_id' => $n->data['order_id'] ?? null,
+                ];
+            })->toArray();
+
+        // Merge with any session-based ones (for backward compat)
         $stickyNotifications = session()->get('sticky_notifications', []);
-        $annoyingNotifications = session()->get('annoying_notifications', []);
-        
-        // Combine both types
-        $allNotifications = array_merge($stickyNotifications, $annoyingNotifications);
-        
+        $allNotifications = array_merge($dbNotifications, $stickyNotifications);
+
+        // Deduplicate by id
+        $seen = [];
+        $unique = [];
+        foreach ($allNotifications as $n) {
+            if (!in_array($n['id'], $seen)) {
+                $seen[] = $n['id'];
+                $unique[] = $n;
+            }
+        }
+
         return response()->json([
-            'has_notifications' => count($allNotifications) > 0,
-            'count' => count($allNotifications),
-            'sticky_count' => count($stickyNotifications),
-            'notifications' => $stickyNotifications // Return sticky ones for modal display
+            'has_notifications' => count($unique) > 0,
+            'count'             => count($unique),
+            'notifications'     => $unique,
         ]);
     }
 }
