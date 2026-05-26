@@ -64,14 +64,13 @@ class NotificationController extends Controller
     public function check(Request $request)
     {
         $user = auth()->user();
-        
-        // Query DB for unread notifications for this user
+
         $dbNotifications = \App\Models\Notification::where('user_id', $user->id)
             ->where('is_read', false)
             ->orderBy('created_at', 'desc')
             ->take(5)
             ->get()
-            ->map(function($n) {
+            ->map(function ($n) {
                 return [
                     'id'       => (string) $n->id,
                     'title'    => $n->title,
@@ -81,16 +80,15 @@ class NotificationController extends Controller
                 ];
             })->toArray();
 
-        // Merge with any session-based ones (for backward compat)
         $stickyNotifications = session()->get('sticky_notifications', []);
-        $allNotifications = array_merge($dbNotifications, $stickyNotifications);
+        $allNotifications    = array_merge($dbNotifications, $stickyNotifications);
 
         // Deduplicate by id
-        $seen = [];
+        $seen   = [];
         $unique = [];
         foreach ($allNotifications as $n) {
             if (!in_array($n['id'], $seen)) {
-                $seen[] = $n['id'];
+                $seen[]   = $n['id'];
                 $unique[] = $n;
             }
         }

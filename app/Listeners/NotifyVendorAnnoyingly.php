@@ -5,25 +5,37 @@ namespace App\Listeners;
 
 use App\Events\OrderPlaced;
 use App\Services\AnnoyingNotificationService;
+use Illuminate\Support\Facades\Log;
 
 class NotifyVendorAnnoyingly
 {
     public function handle(OrderPlaced $event)
     {
         $order = $event->order;
-        $vendor = $order->vendor;
+
+        // Eager-load relationships to avoid null errors
+        $order->loadMissing(['vendor.user', 'customer', 'items']);
+
+        if (!$order->vendor || !$order->vendor->user) {
+            Log::warning('NotifyVendorAnnoyingly: vendor or vendor user missing', [
+                'order_id' => $order->id,
+            ]);
+            return;
+        }
+
+        $vendor     = $order->vendor;
         $vendorUser = $vendor->user;
-        
-        \Log::info('NotifyVendorAnnoyingly triggered', [
-            'order_id' => $order->id,
+
+        Log::info('NotifyVendorAnnoyingly triggered', [
+            'order_id'       => $order->id,
             'vendor_user_id' => $vendorUser->id,
-            'vendor_email' => $vendorUser->email
+            'vendor_email'   => $vendorUser->email,
         ]);
-        
-        $title = "🔴 NEW ORDER! ACT NOW! 🔴";
+
+        $title   = "🔴 NEW ORDER! ACT NOW! 🔴";
         $message = "Order #{$order->order_number} requires your immediate attention! Total: KES " . number_format($order->total, 2);
-        
-        // Create the sticky modal for vendor ONLY
+
+        // Sticky modal (saves to DB — vendor's polling will pick this up)
         AnnoyingNotificationService::createStickyModal(
             $vendorUser->id,
             "🚨 URGENT: NEW ORDER #{$order->order_number}",
@@ -31,8 +43,8 @@ class NotifyVendorAnnoyingly
             'order_placed',
             $order->id
         );
-        
-        // Send desktop notification
+
+        // Desktop / DB notification
         AnnoyingNotificationService::sendDesktopNotification(
             $vendorUser->id,
             $title,
@@ -40,33 +52,24 @@ class NotifyVendorAnnoyingly
             'order_placed',
             $order->id
         );
-        
-        // Email notification
+
+        // Email
         AnnoyingNotificationService::sendEmailNotification(
             $vendorUser,
             "🔴 NEW ORDER RECEIVED - ACT NOW 🔴",
             [
-                'type' => 'order_placed',
-                'order_number' => $order->order_number,
-                'total' => $order->total,
-                'customer' => $order->customer->name,
-                'items_count' => $order->items->count()
+                'type'        => 'order_placed',
+                'order_number'=> $order->order_number,
+                'total'       => $order->total,
+                'customer'    => $order->customer->name,
+                'items_count' => $order->items->count(),
             ],
             $order
         );
-        
-        // PWA push notification
-        AnnoyingNotificationService::sendPushNotification(
-            $vendorUser->id,
-            $title,
-            $message,
-            ['order_id' => $order->id, 'type' => 'vendor', 'action' => 'view_order']
-        );
-        
-        \Log::info('Vendor notified annoyingly', [
-            'order_id' => $order->id,
+
+        Log::info('Vendor notified annoyingly', [
+            'order_id'  => $order->id,
             'vendor_id' => $vendor->id,
-            'vendor_email' => $vendorUser->email
         ]);
     }
 }
