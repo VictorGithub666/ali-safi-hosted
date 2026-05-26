@@ -1,7 +1,39 @@
 @extends('layouts.app')
+@include('vendor.partials.auto-refresh')
 
 @section('content')
 <div class="container-fluid py-4">
+     <!-- Auto-refresh Control Bar (only if order is not completed) -->
+    @if(!in_array($order->status, ['delivered', 'cancelled']))
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="alert alert-info alert-dismissible fade show mb-0" style="background: #f0f7ff; border-left: 4px solid #05bb14;">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <i class="bi bi-arrow-repeat me-2"></i>
+                        <span class="auto-refresh-status fw-bold">Auto-refreshing</span>
+                        <span class="badge bg-light text-dark ms-2">
+                            Next refresh: <span class="auto-refresh-countdown">30s</span>
+                        </span>
+                        @if($order->status === 'pending')
+                            <span class="badge bg-warning ms-2">
+                                <i class="bi bi-clock"></i> Awaiting your action
+                            </span>
+                        @endif
+                    </div>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-primary" id="refreshNowBtn" title="Refresh Now">
+                            <i class="bi bi-arrow-repeat"></i> Refresh Now
+                        </button>
+                        <button type="button" class="btn btn-outline-danger" id="toggleAutoRefreshBtn" title="Pause Auto-Refresh">
+                            <i class="bi bi-pause-circle"></i> Pause
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="fw-bold mb-1">

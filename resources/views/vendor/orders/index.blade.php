@@ -1,7 +1,37 @@
 @extends('layouts.app')
+@include('vendor.partials.auto-refresh')
 
 @section('content')
 <div class="container-fluid py-4">
+     <!-- Auto-refresh Control Bar -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="alert alert-info alert-dismissible fade show mb-0" style="background: #f0f7ff; border-left: 4px solid #05bb14;">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <i class="bi bi-arrow-repeat me-2"></i>
+                        <span class="auto-refresh-status fw-bold">Auto-refreshing</span>
+                        <span class="badge bg-light text-dark ms-2">
+                            Next refresh: <span class="auto-refresh-countdown">30s</span>
+                        </span>
+                        @if(isset($pendingOrders) && $pendingOrders > 0)
+                            <span class="badge bg-danger ms-2">
+                                <i class="bi bi-bell-fill"></i> {{ $pendingOrders }} Pending
+                            </span>
+                        @endif
+                    </div>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-primary" id="refreshNowBtn" title="Refresh Now">
+                            <i class="bi bi-arrow-repeat"></i> Refresh Now
+                        </button>
+                        <button type="button" class="btn btn-outline-danger" id="toggleAutoRefreshBtn" title="Pause Auto-Refresh">
+                            <i class="bi bi-pause-circle"></i> Pause
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="fw-bold mb-1">
@@ -135,155 +165,6 @@
     @endif
 </div>
 
-@push('scripts')
-<script>
-        let refreshTimer = null;
-        let countdown = 30;
-        let isAutoRefreshEnabled = true;
-        let isPageVisible = true;
 
-        // Function to reload the page
-        function reloadPage() {
-            if (isAutoRefreshEnabled && isPageVisible) {
-                window.location.reload();
-            }
-        }
-
-        // Countdown timer for next refresh
-        function startCountdown() {
-            countdown = 30;
-            const countdownElement = document.getElementById('countdownTimer');
-            const refreshStatus = document.getElementById('refreshStatus');
-            
-            if (refreshTimer) {
-                clearInterval(refreshTimer);
-            }
-            
-            refreshTimer = setInterval(() => {
-                if (!isAutoRefreshEnabled) return;
-                
-                countdown--;
-                
-                if (countdownElement) {
-                    countdownElement.textContent = `Next refresh in ${countdown}s`;
-                }
-                
-                if (countdown <= 0) {
-                    clearInterval(refreshTimer);
-                    if (refreshStatus) refreshStatus.textContent = 'Refreshing...';
-                    reloadPage();
-                }
-            }, 1000);
-        }
-
-        // Toggle refresh function
-        function toggleRefresh() {
-            const toggleBtn = document.getElementById('toggleRefreshBtn');
-            const refreshStatus = document.getElementById('refreshStatus');
-            
-            if (isAutoRefreshEnabled) {
-                // Stop auto-refresh
-                isAutoRefreshEnabled = false;
-                if (refreshTimer) clearInterval(refreshTimer);
-                
-                if (toggleBtn) {
-                    toggleBtn.innerHTML = '<i class="bi bi-play-circle"></i> Resume';
-                    toggleBtn.classList.remove('btn-outline-danger');
-                    toggleBtn.classList.add('btn-outline-success');
-                }
-                if (refreshStatus) refreshStatus.textContent = 'Auto-refresh paused';
-                
-                const countdownElement = document.getElementById('countdownTimer');
-                if (countdownElement) countdownElement.textContent = 'Paused';
-            } else {
-                // Start auto-refresh
-                isAutoRefreshEnabled = true;
-                startCountdown();
-                
-                if (toggleBtn) {
-                    toggleBtn.innerHTML = '<i class="bi bi-pause-circle"></i> Pause';
-                    toggleBtn.classList.remove('btn-outline-success');
-                    toggleBtn.classList.add('btn-outline-danger');
-                }
-                if (refreshStatus) refreshStatus.textContent = 'Auto-refreshing';
-            }
-        }
-
-        // Manual refresh
-        // function manualRefresh() {
-        //     if (refreshTimer) clearInterval(refreshTimer);
-        //     window.location.reload();
-        // }
-
-        // // Handle page visibility (don't refresh when tab is hidden)
-        // function handleVisibilityChange() {
-        //     isPageVisible = !document.hidden;
-            
-        //     if (isPageVisible && isAutoRefreshEnabled && !refreshTimer) {
-        //         startCountdown();
-        //     } else if (!isPageVisible && refreshTimer) {
-        //         clearInterval(refreshTimer);
-        //         refreshTimer = null;
-        //     }
-        // }
-
-        // Auto-refresh on new orders only (optional - poll for new orders)
-        let lastOrderCount = {{ $totalOrders ?? 0 }};
-        let lastPendingCount = {{ $pendingOrders ?? 0 }};
-
-        function checkForNewOrders() {
-            fetch('{{ route("vendor.orders.check-new") }}')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.has_new_orders) {
-                        // Show notification
-                        const toast = document.createElement('div');
-                        toast.className = 'alert alert-warning alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
-                        toast.style.zIndex = '100000';
-                        toast.style.minWidth = '350px';
-                        toast.style.zIndex = '10000';
-                        toast.innerHTML = `
-                            <i class="bi bi-bell-fill me-2"></i>
-                            <strong>🔔 New Order Received!</strong>
-                            <p class="mb-0 small">You have ${data.new_count} new order(s). Refreshing page...</p>
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        `;
-                        document.body.appendChild(toast);
-                        
-                        // Refresh immediately
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 2000);
-                    }
-                })
-                .catch(error => console.error('Error checking orders:', error));
-        }
-
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            startCountdown();
-            
-            // Set up event listeners
-            const toggleBtn = document.getElementById('toggleRefreshBtn');
-            if (toggleBtn) toggleBtn.addEventListener('click', toggleRefresh);
-            
-            const refreshNowBtn = document.getElementById('refreshNowBtn');
-            if (refreshNowBtn) refreshNowBtn.addEventListener('click', manualRefresh);
-            
-            // Listen for page visibility changes
-            document.addEventListener('visibilitychange', handleVisibilityChange);
-            
-            // Check for new orders every 15 seconds (optional)
-            setInterval(checkForNewOrders, 15000);
-        });
-
-        // Clean up intervals on page unload
-        window.addEventListener('beforeunload', function() {
-            if (refreshTimer) {
-                clearInterval(refreshTimer);
-            }
-        });
-</script>
-@endpush
 
 @endsection
