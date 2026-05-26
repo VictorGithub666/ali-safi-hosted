@@ -587,6 +587,97 @@
                 }
             })();
             </script>
+            
+            <!-- Load unread notifications from database on page load -->
+            <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                @if(Auth::user()->user_type === 'vendor' || Auth::user()->user_type === 'admin' || Auth::user()->user_type === 'rider')
+                // Fetch unread notifications from the database on page load
+                fetch('{{ route("notifications.check") }}', {
+                    method: 'GET',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.has_notifications && data.notifications && data.notifications.length > 0) {
+                        // Display each unread notification as an annoying modal
+                        data.notifications.forEach(function(notification, index) {
+                            // Stagger the display slightly to avoid overwhelming
+                            setTimeout(function() {
+                                // Create overlay
+                                const overlay = document.createElement('div');
+                                overlay.className = 'annoying-modal-overlay';
+                                overlay.id = 'annoyingModal' + notification.id;
+                                overlay.innerHTML = `
+                                    <div class="annoying-modal">
+                                        <div style="font-size: 48px; margin-bottom: 20px;">🔴🔔🔴</div>
+                                        <h2>${notification.title}</h2>
+                                        <p>${(notification.message || '').replace(/\n/g, '<br>')}</p>
+                                        
+                                        <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+                                            <button onclick="acknowledgeUrgentNotification('${notification.id}', ${notification.order_id || 'null'}, '{{ Auth::user()->user_type }}')" 
+                                                    class="acknowledge-btn">
+                                                ✅ ACKNOWLEDGE NOW
+                                            </button>
+                                            <button onclick="dismissAnnoyingModal('${notification.id}')" 
+                                                    class="dismiss-btn">
+                                                ❌ Dismiss (Remind in 1 min)
+                                            </button>
+                                        </div>
+                                        
+                                        <div style="margin-top: 20px; font-size: 12px; color: #ff9999;">
+                                            <span id="countdown${notification.id}">This alert will auto-dismiss in 30 seconds</span>
+                                        </div>
+                                    </div>
+                                `;
+                                
+                                document.body.appendChild(overlay);
+                                
+                                // Play sound and vibrate
+                                playAnnoyingSound();
+                                vibrateDevice();
+                                
+                                // Countdown timer
+                                let countdown = 30;
+                                const countdownEl = document.getElementById('countdown' + notification.id);
+                                const timer = setInterval(() => {
+                                    countdown--;
+                                    if (countdownEl) {
+                                        countdownEl.textContent = `This alert will auto-dismiss in ${countdown} seconds`;
+                                    }
+                                    if (countdown <= 0) {
+                                        clearInterval(timer);
+                                        stopAnnoyingSound();
+                                        const modal = document.getElementById('annoyingModal' + notification.id);
+                                        if (modal) modal.remove();
+                                        
+                                        // Auto-acknowledge after timeout
+                                        fetch('{{ route("notifications.acknowledge") }}', {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}'
+                                            },
+                                            body: JSON.stringify({ 
+                                                notification_id: notification.id, 
+                                                order_id: notification.order_id,
+                                                auto_acknowledged: true
+                                            })
+                                        });
+                                    }
+                                }, 1000);
+                            }, index * 500); // Stagger notifications by 500ms
+                        });
+                    }
+                })
+                .catch(error => console.error('Error checking notifications:', error));
+                @endif
+            });
+            </script>
             @endif
         @endauth
 
