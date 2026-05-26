@@ -454,6 +454,81 @@
         <!-- Bootstrap JS -->
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
+        @auth
+@if(Auth::user()->user_type === 'vendor')
+<script>
+// Global auto-refresh for vendor pages (30 seconds)
+(function() {
+    // Don't auto-refresh on edit/create pages or when form has unsaved changes
+    const noRefreshPaths = ['/vendor/products/create', '/vendor/products/*/edit'];
+    const currentPath = window.location.pathname;
+    
+    let shouldAutoRefresh = true;
+    
+    // Check if current page should not auto-refresh
+    for (const path of noRefreshPaths) {
+        const pattern = path.replace(/\*/g, '[^/]+');
+        const regex = new RegExp('^' + pattern + '$');
+        if (regex.test(currentPath)) {
+            shouldAutoRefresh = false;
+            break;
+        }
+    }
+    
+    if (shouldAutoRefresh) {
+        let countdown = 30;
+        
+        // Create floating indicator
+        const indicator = document.createElement('div');
+        indicator.id = 'autoRefreshIndicator';
+        indicator.style.cssText = 'position:fixed; bottom:20px; right:20px; background:#05bb14; color:white; padding:8px 15px; border-radius:20px; font-size:12px; z-index:9999; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,0.2);';
+        indicator.innerHTML = `🔄 Refresh in ${countdown}s <span style="margin-left:5px;">⏸️</span>`;
+        document.body.appendChild(indicator);
+        
+        let timer = setInterval(() => {
+            countdown--;
+            indicator.innerHTML = `🔄 Refresh in ${countdown}s <span style="margin-left:5px;">⏸️</span>`;
+            
+            if (countdown <= 0) {
+                clearInterval(timer);
+                window.location.reload();
+            }
+        }, 1000);
+        
+        // Pause on click
+        indicator.addEventListener('click', function() {
+            if (timer) {
+                clearInterval(timer);
+                timer = null;
+                indicator.style.background = '#dc3545';
+                indicator.innerHTML = `⏸️ Auto-refresh paused <span style="margin-left:5px;">▶️</span>`;
+                
+                // Resume after 5 seconds if clicked again
+                indicator.addEventListener('click', function resume() {
+                    if (!timer) {
+                        countdown = 30;
+                        timer = setInterval(() => {
+                            countdown--;
+                            indicator.innerHTML = `🔄 Refresh in ${countdown}s <span style="margin-left:5px;">⏸️</span>`;
+                            if (countdown <= 0) {
+                                clearInterval(timer);
+                                window.location.reload();
+                            }
+                        }, 1000);
+                        indicator.style.background = '#05bb14';
+                        indicator.innerHTML = `🔄 Refresh in ${countdown}s <span style="margin-left:5px;">⏸️</span>`;
+                        indicator.removeEventListener('click', resume);
+                    }
+                });
+            }
+        });
+    }
+})();
+</script>
+@endif
+@endauth
+
+
         <!-- Password Toggle Script -->
         <script>
             document.addEventListener('DOMContentLoaded', function() {
