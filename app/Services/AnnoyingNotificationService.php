@@ -1,4 +1,5 @@
 <?php
+// app/Services/AnnoyingNotificationService.php
 
 namespace App\Services;
 
@@ -15,12 +16,12 @@ class AnnoyingNotificationService
      */
     public static function getAnnoyingSoundUrl($type)
     {
-        // Use your existing alarm_sound.mp3 for all types
-        return '/sounds/alarm_sound.mp3';
+        return asset('sounds/alarm_sound.mp3');
     }
 
     /**
      * Send ANNOYING desktop notification (intrusive popup)
+     * ONLY for the intended user type
      */
     public static function sendDesktopNotification($userId, $title, $body, $type, $orderId = null)
     {
@@ -33,22 +34,12 @@ class AnnoyingNotificationService
             'is_read' => false,
         ]);
 
-        // Store in session for immediate display on next page load (using annoying_notifications)
-        $annoyingNotifications = session()->get('annoying_notifications', []);
-        $annoyingNotifications[] = [
-            'id' => (string) $notification->id,
-            'title' => $title,
-            'body' => $body,
-            'type' => $type,
-            'order_id' => $orderId,
-            'sound_url' => self::getAnnoyingSoundUrl($type),
-            'requires_action' => true,
-            'intrusive' => true
-        ];
-        session()->put('annoying_notifications', $annoyingNotifications);
+        // Store in session for immediate display - FIX: Only for the specific user's session
+        // But since we can't target specific user's session easily, we'll use a different approach
+        // Store in database and fetch via AJAX instead
         
-        // ALSO create sticky modal for guaranteed visibility
-        self::createStickyModal($userId, $title, $body, $type, $orderId);
+        // Store as push notification for service worker
+        self::sendPushNotification($userId, $title, $body, ['order_id' => $orderId, 'type' => $type]);
 
         return $notification;
     }
@@ -65,9 +56,8 @@ class AnnoyingNotificationService
             'order_picked_up' => '📦 ORDER PICKED UP - DELIVER ASAP! 📦'
         ];
 
-        $emailSubject = $urgentSubjects[$content['type']] ?? '⚠️ URGENT: Action Required - Ali-Safi Platform ⚠️';
+        $emailSubject = $urgentSubjects[$content['type'] ?? ''] ?? '⚠️ URGENT: Action Required - Ali-Safi Platform ⚠️';
         
-        // Simple HTML email - no external view needed
         $html = self::generateEmailHtml($user, $emailSubject, $content, $order);
 
         try {
@@ -87,11 +77,34 @@ class AnnoyingNotificationService
      */
     private static function generateEmailHtml($user, $subject, $content, $order)
     {
-        $orderNumber = $content['order_number'] ?? $order->order_number ?? 'N/A';
+        $orderNumber = $content['order_number'] ?? ($order->order_number ?? 'N/A');
         $total = $content['total'] ?? ($order->total ?? 0);
         $customer = $content['customer'] ?? ($order->customer->name ?? 'N/A');
         $vendor = $content['vendor'] ?? ($order->vendor->business_name ?? 'N/A');
-        $address = $content['address'] ?? $order->delivery_address ?? 'N/A';
+        $address = $content['address'] ?? ($order->delivery_address ?? 'N/A');
+        
+        $adminUrl = route('admin.orders.show', $order->id ?? 0);
+        $vendorUrl = route('vendor.orders.show', $order->id ?? 0);
+        $riderUrl = route('rider.deliveries.show', $order->id ?? 0);
+        $customerUrl = route('customer.orders.track', $order->id ?? 0);
+        
+        $actionUrl = '#';
+        if (isset($content['type'])) {
+            switch ($content['type']) {
+                case 'order_placed':
+                    $actionUrl = $vendorUrl;
+                    break;
+                case 'ready_for_pickup':
+                    $actionUrl = $adminUrl;
+                    break;
+                case 'rider_assigned':
+                    $actionUrl = $riderUrl;
+                    break;
+                case 'order_picked_up':
+                    $actionUrl = $customerUrl;
+                    break;
+            }
+        }
         
         $html = <<<HTML
 <!DOCTYPE html>
@@ -118,7 +131,7 @@ class AnnoyingNotificationService
             </div>
             
             <div style="text-align: center; margin-top: 30px;">
-                <a href="' . url('/') . '" 
+                <a href="{$actionUrl}" 
                    style="background: #ff0000; color: white; padding: 15px 30px; text-decoration: none; font-weight: bold; font-size: 20px; display: inline-block;">
                     🔥 CLICK HERE TO RESPOND NOW 🔥
                 </a>
@@ -140,27 +153,48 @@ HTML;
      */
     public static function sendPushNotification($userId, $title, $body, $data = [])
     {
-        // Store for push service worker
-        $pushQueue = session()->get('push_notifications', []);
-        $pushQueue[] = [
+        // Store in database for the specific user
+        $notification = Notification::create([
             'user_id' => $userId,
+            'title' => $title,
+            'message' => $body,
+            'type' => $data['type'] ?? 'system',
+            'data' => $data,
+            'is_read' => false,
+        ]);
+        
+        // Store in cache for service worker polling
+        $userPendingKey = 'push_pending_' . $userId;
+        $existing = \Illuminate\Support\Facades\Cache::get($userPendingKey, []);
+        $existing[] = [
+            'id' => $notification->id,
             'title' => $title,
             'body' => $body,
             'data' => $data,
-            'timestamp' => now(),
+            'timestamp' => now()->toIso8601String(),
             'vibrate' => [500, 300, 500, 300, 1000, 500, 300, 500, 300, 2000],
             'require_interaction' => true,
             'silent' => false,
-            'actions' => [
-                ['action' => 'view', 'title' => '🔥 VIEW NOW 🔥'],
-                ['action' => 'snooze', 'title' => '⏰ Remind in 1 min'],
-                ['action' => 'dismiss', 'title' => '❌ Dismiss']
-            ]
         ];
-        session()->put('push_notifications', $pushQueue);
+        \Illuminate\Support\Facades\Cache::put($userPendingKey, $existing, 300);
         
-        // Also store in cache for service worker to pick up
-        \Illuminate\Support\Facades\Cache::put('push_pending_' . $userId, true, 300);
+        // Also store in session for immediate display on page load
+        // Only store for the user who is currently logged in
+        if (auth()->check() && auth()->id() == $userId) {
+            $stickyNotifications = session()->get('sticky_notifications', []);
+            $stickyNotifications[] = [
+                'id' => (string) $notification->id,
+                'title' => $title,
+                'message' => $body,
+                'type' => $data['type'] ?? 'system',
+                'order_id' => $data['order_id'] ?? null,
+                'requires_confirmation' => true,
+                'blocking' => true,
+                'priority' => 'critical',
+                'created_at' => now()->toDateTimeString()
+            ];
+            session()->put('sticky_notifications', $stickyNotifications);
+        }
         
         Log::info('Push notification queued', ['user_id' => $userId, 'title' => $title]);
     }
@@ -170,6 +204,20 @@ HTML;
      */
     public static function createStickyModal($userId, $title, $message, $type, $orderId = null)
     {
+        // Only create for the currently logged in user
+        if (!auth()->check() || auth()->id() != $userId) {
+            // Store in database for later retrieval
+            Notification::create([
+                'user_id' => $userId,
+                'title' => $title,
+                'message' => $message,
+                'type' => $type,
+                'data' => ['order_id' => $orderId, 'requires_attention' => true],
+                'is_read' => false,
+            ]);
+            return;
+        }
+        
         $stickyNotifications = session()->get('sticky_notifications', []);
         $stickyNotifications[] = [
             'id' => uniqid('sticky_'),
@@ -206,5 +254,15 @@ HTML;
         session()->forget('sticky_notifications');
         session()->forget('annoying_notifications');
         Log::info('All sticky modals cleared', ['user_id' => auth()->id()]);
+    }
+    
+    /**
+     * Get pending notifications for a user via AJAX
+     */
+    public static function getPendingNotifications($userId)
+    {
+        $pending = \Illuminate\Support\Facades\Cache::get('push_pending_' . $userId, []);
+        \Illuminate\Support\Facades\Cache::forget('push_pending_' . $userId);
+        return $pending;
     }
 }

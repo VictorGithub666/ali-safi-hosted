@@ -618,14 +618,22 @@
 
         <!-- Notification Checker for New Alerts -->
         <script>
+            // Replace the notification checker with this version that only checks for notifications
+            // that belong to the current user type (this should be handled by your backend)
+
             let lastNotificationCount = 0;
-            
+            let lastCheckTime = Date.now();
+
             function checkForNewNotifications() {
+                // Don't check if this is a customer page (optional)
+                // You can add logic to skip checking for customers if needed
+                
                 fetch('{{ route("notifications.check") }}')
                     .then(response => response.json())
                     .then(data => {
                         if (data.has_notifications && data.count !== lastNotificationCount) {
                             lastNotificationCount = data.count;
+                            
                             // Show a toast notification about new alert
                             const toast = document.createElement('div');
                             toast.className = 'alert alert-danger alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
@@ -650,15 +658,15 @@
                                 if (toast) toast.remove();
                             }, 5000);
                             
-                            // Refresh page to show modal
+                            // Refresh page to show modal after 2 seconds
                             setTimeout(() => location.reload(), 2000);
                         }
                     })
                     .catch(error => console.error('Error checking notifications:', error));
             }
-            
-            // Check every 5 seconds
-            setInterval(checkForNewNotifications, 5000);
+
+            // Check every 10 seconds instead of 5 to reduce load
+            setInterval(checkForNewNotifications, 10000);
         </script>
 
         <script>

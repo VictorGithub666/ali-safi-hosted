@@ -371,4 +371,54 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+
+
+<script>
+    let refreshTimer = null;
+    let countdown = 30; // Refresh every 30 seconds
+
+    function startVendorAutoRefresh() {
+        if (refreshTimer) clearInterval(refreshTimer);
+        
+        refreshTimer = setInterval(() => {
+            // Check for new orders via AJAX first
+            checkForNewOrders();
+        }, 30000);
+    }
+
+    function checkForNewOrders() {
+        fetch('{{ route("vendor.orders.check-new") }}')
+            .then(response => response.json())
+            .then(data => {
+                if (data.has_new_orders) {
+                    // Play annoying sound
+                    playAnnoyingSound();
+                    
+                    // Show notification
+                    const toast = document.createElement('div');
+                    toast.className = 'alert alert-danger alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+                    toast.style.zIndex = '100000';
+                    toast.style.zIndex = '100000';
+                    toast.style.minWidth = '350px';
+                    toast.style.background = '#ff0000';
+                    toast.style.color = 'white';
+                    toast.style.fontWeight = 'bold';
+                    toast.innerHTML = `
+                        <i class="bi bi-bell-fill me-2"></i>
+                        <strong>🔴 NEW ORDER RECEIVED! 🔴</strong>
+                        <p class="mb-0 small">You have ${data.new_count} new order(s)!</p>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+                    `;
+                    document.body.appendChild(toast);
+                    
+                    // Refresh page after 3 seconds
+                    setTimeout(() => location.reload(), 3000);
+                }
+            })
+            .catch(error => console.error('Error checking new orders:', error));
+        }
+
+    // Start auto-refresh on vendor dashboard
+    startVendorAutoRefresh();
+    </script>
 @endsection

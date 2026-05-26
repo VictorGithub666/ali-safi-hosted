@@ -95,6 +95,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/orders', [VendorOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/{order}', [VendorOrderController::class, 'show'])->name('orders.show');
         Route::patch('/orders/{order}/status', [VendorOrderController::class, 'updateStatus'])->name('orders.update-status');
+        Route::get('/orders/check-new', function() {
+            $vendor = auth()->user()->vendor;
+            $lastCheck = session()->get('last_order_check', now()->subMinutes(5));
+            
+            $newOrders = Order::where('vendor_id', $vendor->id)
+                ->where('created_at', '>', $lastCheck)
+                ->count();
+            
+            session()->put('last_order_check', now());
+            
+            return response()->json([
+                'has_new_orders' => $newOrders > 0,
+                'new_count' => $newOrders
+            ]);
+        })->name('orders.check-new');
         
         Route::get('/earnings', [VendorDashboardController::class, 'earnings'])->name('earnings');
         Route::get('/analytics', [VendorDashboardController::class, 'analytics'])->name('analytics');
@@ -190,3 +205,12 @@ Route::prefix('api/v1')->middleware('auth:sanctum')->group(function () {
 Route::get('/offline', function () {
     return view('offline');
 })->name('offline');
+
+// Add to routes/web.php for debugging
+Route::get('/test-sw', function () {
+    return response()->json([
+        'sw_exists' => file_exists(public_path('sw.js')),
+        'manifest_exists' => file_exists(public_path('manifest.json')),
+        'public_path' => public_path(),
+    ]);
+});

@@ -1,10 +1,11 @@
 <?php
-// app/Listeners/NotifyCustomerAnnoyingly.php
+// app/Listeners/NotifyCustomerAnnoyingly.php - COMMENT OUT OR DELETE
 
 namespace App\Listeners;
 
 use App\Events\OrderStatusUpdated;
 use App\Services\AnnoyingNotificationService;
+use Illuminate\Support\Facades\Log;
 
 class NotifyCustomerAnnoyingly
 {
@@ -18,6 +19,11 @@ class NotifyCustomerAnnoyingly
         }
         
         $customer = $order->customer;
+        
+        Log::info('NotifyCustomerAnnoyingly triggered', [
+            'order_id' => $order->id,
+            'customer_id' => $customer->id
+        ]);
         
         $title = "🎉 YOUR ORDER HAS BEEN PICKED UP! 🎉";
         $message = "Order #{$order->order_number} is on its way! Track your delivery NOW!";
@@ -64,10 +70,9 @@ class NotifyCustomerAnnoyingly
             ['order_id' => $order->id, 'type' => 'customer', 'action' => 'track_order']
         );
         
-        \Log::info('Customer notified about pickup', [
+        Log::info('Customer notified about pickup', [
             'order_id' => $order->id,
-            'customer_id' => $customer->id,
-            'customer_email' => $customer->email
+            'customer_id' => $customer->id
         ]);
     }
 }

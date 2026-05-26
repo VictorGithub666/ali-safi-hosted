@@ -1,10 +1,10 @@
 <?php
+// app/Listeners/NotifyVendorAnnoyingly.php
 
 namespace App\Listeners;
 
 use App\Events\OrderPlaced;
 use App\Services\AnnoyingNotificationService;
-use App\Models\User;
 
 class NotifyVendorAnnoyingly
 {
@@ -14,19 +14,25 @@ class NotifyVendorAnnoyingly
         $vendor = $order->vendor;
         $vendorUser = $vendor->user;
         
+        \Log::info('NotifyVendorAnnoyingly triggered', [
+            'order_id' => $order->id,
+            'vendor_user_id' => $vendorUser->id,
+            'vendor_email' => $vendorUser->email
+        ]);
+        
         $title = "🔴 NEW ORDER! ACT NOW! 🔴";
         $message = "Order #{$order->order_number} requires your immediate attention! Total: KES " . number_format($order->total, 2);
         
-        // Create the sticky modal directly (most intrusive)
+        // Create the sticky modal for vendor ONLY
         AnnoyingNotificationService::createStickyModal(
             $vendorUser->id,
             "🚨 URGENT: NEW ORDER #{$order->order_number}",
-            "You have received a new order!\n\nOrder #: {$order->order_number}\nAmount: KES " . number_format($order->total, 2) . "\nCustomer: {$order->customer->name}\nItems: {$order->items->count()} item(s)\n\nPlease confirm immediately to avoid delays!",
+            "You have received a new order!\n\nOrder #: {$order->order_number}\nAmount: KES " . number_format($order->total, 2) . "\nCustomer: {$order->customer->name}\nItems: {$order->items->count()} item(s)\n\nPlease confirm immediately to avoid delays!\n\n⚠️ This is a priority alert!",
             'order_placed',
             $order->id
         );
         
-        // Also send desktop notification
+        // Send desktop notification
         AnnoyingNotificationService::sendDesktopNotification(
             $vendorUser->id,
             $title,
@@ -54,7 +60,7 @@ class NotifyVendorAnnoyingly
             $vendorUser->id,
             $title,
             $message,
-            ['order_id' => $order->id, 'type' => 'vendor']
+            ['order_id' => $order->id, 'type' => 'vendor', 'action' => 'view_order']
         );
         
         \Log::info('Vendor notified annoyingly', [
