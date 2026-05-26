@@ -453,80 +453,142 @@
 
         <!-- Bootstrap JS -->
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
         @auth
-@if(Auth::user()->user_type === 'vendor')
-<script>
-// Global auto-refresh for vendor pages (30 seconds)
-(function() {
-    // Don't auto-refresh on edit/create pages or when form has unsaved changes
-    const noRefreshPaths = ['/vendor/products/create', '/vendor/products/*/edit'];
-    const currentPath = window.location.pathname;
-    
-    let shouldAutoRefresh = true;
-    
-    // Check if current page should not auto-refresh
-    for (const path of noRefreshPaths) {
-        const pattern = path.replace(/\*/g, '[^/]+');
-        const regex = new RegExp('^' + pattern + '$');
-        if (regex.test(currentPath)) {
-            shouldAutoRefresh = false;
-            break;
-        }
-    }
-    
-    if (shouldAutoRefresh) {
-        let countdown = 30;
-        
-        // Create floating indicator
-        const indicator = document.createElement('div');
-        indicator.id = 'autoRefreshIndicator';
-        indicator.style.cssText = 'position:fixed; bottom:20px; right:20px; background:#05bb14; color:white; padding:8px 15px; border-radius:20px; font-size:12px; z-index:9999; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,0.2);';
-        indicator.innerHTML = `🔄 Refresh in ${countdown}s <span style="margin-left:5px;">⏸️</span>`;
-        document.body.appendChild(indicator);
-        
-        let timer = setInterval(() => {
-            countdown--;
-            indicator.innerHTML = `🔄 Refresh in ${countdown}s <span style="margin-left:5px;">⏸️</span>`;
-            
-            if (countdown <= 0) {
-                clearInterval(timer);
-                window.location.reload();
-            }
-        }, 1000);
-        
-        // Pause on click
-        indicator.addEventListener('click', function() {
-            if (timer) {
-                clearInterval(timer);
-                timer = null;
-                indicator.style.background = '#dc3545';
-                indicator.innerHTML = `⏸️ Auto-refresh paused <span style="margin-left:5px;">▶️</span>`;
+            @if(Auth::user()->user_type === 'vendor')
+            <script>
+            // Global auto-refresh for vendor pages (30 seconds) with new order detection
+            (function() {
+                // Don't auto-refresh on edit/create pages or when form has unsaved changes
+                const noRefreshPaths = ['/vendor/products/create', '/vendor/products/*/edit'];
+                const currentPath = window.location.pathname;
                 
-                // Resume after 5 seconds if clicked again
-                indicator.addEventListener('click', function resume() {
-                    if (!timer) {
-                        countdown = 30;
-                        timer = setInterval(() => {
-                            countdown--;
-                            indicator.innerHTML = `🔄 Refresh in ${countdown}s <span style="margin-left:5px;">⏸️</span>`;
-                            if (countdown <= 0) {
-                                clearInterval(timer);
-                                window.location.reload();
-                            }
-                        }, 1000);
-                        indicator.style.background = '#05bb14';
-                        indicator.innerHTML = `🔄 Refresh in ${countdown}s <span style="margin-left:5px;">⏸️</span>`;
-                        indicator.removeEventListener('click', resume);
+                let shouldAutoRefresh = true;
+                let lastOrderCheck = null;
+                let refreshTimer = null;
+                let orderCheckTimer = null;
+                
+                // Check if current page should not auto-refresh
+                for (const path of noRefreshPaths) {
+                    const pattern = path.replace(/\*/g, '[^/]+');
+                    const regex = new RegExp('^' + pattern + '$');
+                    if (regex.test(currentPath)) {
+                        shouldAutoRefresh = false;
+                        break;
                     }
-                });
-            }
-        });
-    }
-})();
-</script>
-@endif
-@endauth
+                }
+                
+                if (shouldAutoRefresh) {
+                    let countdown = 30;
+                    
+                    // Create floating indicator
+                    const indicator = document.createElement('div');
+                    indicator.id = 'autoRefreshIndicator';
+                    indicator.style.cssText = 'position:fixed; bottom:20px; right:20px; background:#05bb14; color:white; padding:8px 15px; border-radius:20px; font-size:12px; z-index:9999; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,0.2);';
+                    indicator.innerHTML = `🔄 Refresh in ${countdown}s <span style="margin-left:5px;">⏸️</span>`;
+                    document.body.appendChild(indicator);
+                    
+                    // Function to check for new orders via AJAX
+                    function checkForNewOrders() {
+                        fetch('/vendor/orders/check-new', {
+                            method: 'GET',
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Accept': 'application/json'
+                            }
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.has_new_orders) {
+                                // Play notification sound
+                                const audio = new Audio('/sounds/alarm_sound.mp3');
+                                audio.play().catch(e => console.log('Audio play failed', e));
+                                
+                                // Show notification
+                                const notification = document.createElement('div');
+                                notification.className = 'alert alert-danger alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+                                notification.style.zIndex = '100000';
+                                notification.style.minWidth = '350px';
+                                notification.style.background = '#dc3545';
+                                notification.style.color = 'white';
+                                notification.style.fontWeight = 'bold';
+                                notification.style.boxShadow = '0 4px 15px rgba(0,0,0,0.2)';
+                                notification.innerHTML = `
+                                    <div class="d-flex align-items-center">
+                                        <div class="spinner-grow spinner-grow-sm me-3" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <div>
+                                            <strong>🔴 NEW ORDER RECEIVED! 🔴</strong>
+                                            <p class="mb-0 small">You have ${data.new_count} new order(s)! Page will refresh in 5 seconds.</p>
+                                        </div>
+                                        <button type="button" class="btn-close btn-close-white ms-3" data-bs-dismiss="alert"></button>
+                                    </div>
+                                `;
+                                document.body.appendChild(notification);
+                                
+                                // Force refresh after 3 seconds
+                                setTimeout(() => {
+                                    if (refreshTimer) clearInterval(refreshTimer);
+                                    window.location.reload();
+                                }, 3000);
+                            }
+                        })
+                        .catch(error => console.error('Error checking new orders:', error));
+                    }
+                    
+                    // Check for new orders every 10 seconds
+                    orderCheckTimer = setInterval(checkForNewOrders, 10000);
+                    
+                    let timer = setInterval(() => {
+                        countdown--;
+                        indicator.innerHTML = `🔄 Refresh in ${countdown}s <span style="margin-left:5px;">⏸️</span>`;
+                        
+                        if (countdown <= 0) {
+                            clearInterval(timer);
+                            window.location.reload();
+                        }
+                    }, 1000);
+                    
+                    // Pause on click
+                    indicator.addEventListener('click', function() {
+                        if (timer) {
+                            clearInterval(timer);
+                            if (orderCheckTimer) clearInterval(orderCheckTimer);
+                            timer = null;
+                            indicator.style.background = '#dc3545';
+                            indicator.innerHTML = `⏸️ Auto-refresh paused <span style="margin-left:5px;">▶️</span>`;
+                            
+                            // Resume after 5 seconds if clicked again
+                            indicator.addEventListener('click', function resume() {
+                                if (!timer) {
+                                    countdown = 30;
+                                    timer = setInterval(() => {
+                                        countdown--;
+                                        indicator.innerHTML = `🔄 Refresh in ${countdown}s <span style="margin-left:5px;">⏸️</span>`;
+                                        if (countdown <= 0) {
+                                            clearInterval(timer);
+                                            window.location.reload();
+                                        }
+                                    }, 1000);
+                                    orderCheckTimer = setInterval(checkForNewOrders, 10000);
+                                    indicator.style.background = '#05bb14';
+                                    indicator.innerHTML = `🔄 Refresh in ${countdown}s <span style="margin-left:5px;">⏸️</span>`;
+                                    indicator.removeEventListener('click', resume);
+                                }
+                            });
+                        }
+                    });
+                    
+                    // Clean up on page unload
+                    window.addEventListener('beforeunload', function() {
+                        if (timer) clearInterval(timer);
+                        if (orderCheckTimer) clearInterval(orderCheckTimer);
+                    });
+                }
+            })();
+            </script>
+            @endif
+        @endauth
 
 
         <!-- Password Toggle Script -->
