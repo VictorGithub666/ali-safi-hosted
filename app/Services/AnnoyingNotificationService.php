@@ -12,7 +12,25 @@ use Illuminate\Support\Facades\Mail;
 class AnnoyingNotificationService
 {
     /**
-     * Get sound URL - using your actual alarm_sound.mp3
+     * Map notification types to valid database ENUM values
+     */
+    protected static function mapTypeToDb($type)
+    {
+        $typeMap = [
+            'order_placed' => 'order',
+            'ready_for_pickup' => 'order',
+            'rider_assigned' => 'order',
+            'order_picked_up' => 'order',
+            'order' => 'order',
+            'payment' => 'payment',
+            'promotion' => 'promotion',
+        ];
+        
+        return $typeMap[$type] ?? 'system';
+    }
+
+    /**
+     * Get sound URL
      */
     public static function getAnnoyingSoundUrl($type)
     {
@@ -20,32 +38,38 @@ class AnnoyingNotificationService
     }
 
     /**
-     * Send ANNOYING desktop notification (intrusive popup)
-     * ONLY for the intended user type
+     * Send desktop notification
      */
     public static function sendDesktopNotification($userId, $title, $body, $type, $orderId = null)
     {
-        $notification = Notification::create([
-            'user_id' => $userId,
-            'title' => $title,
-            'message' => $body,
-            'type' => $type,
-            'data' => ['order_id' => $orderId, 'requires_attention' => true],
-            'is_read' => false,
-        ]);
+        try {
+            $dbType = self::mapTypeToDb($type);
+            
+            $notification = Notification::create([
+                'user_id' => $userId,
+                'title' => $title,
+                'message' => $body,
+                'type' => $dbType,
+                'data' => ['order_id' => $orderId, 'requires_attention' => true, 'original_type' => $type],
+                'is_read' => false,
+            ]);
 
-        // Store in session for immediate display - FIX: Only for the specific user's session
-        // But since we can't target specific user's session easily, we'll use a different approach
-        // Store in database and fetch via AJAX instead
-        
-        // Store as push notification for service worker
-        self::sendPushNotification($userId, $title, $body, ['order_id' => $orderId, 'type' => $type]);
+            // Store as push notification
+            self::sendPushNotification($userId, $title, $body, ['order_id' => $orderId, 'type' => $type]);
 
-        return $notification;
+            return $notification;
+        } catch (\Exception $e) {
+            Log::error('Failed to send desktop notification', [
+                'error' => $e->getMessage(),
+                'user_id' => $userId,
+                'type' => $type
+            ]);
+            return null;
+        }
     }
 
     /**
-     * Send email notification with URGENT subject lines
+     * Send email notification
      */
     public static function sendEmailNotification($user, $subject, $content, $order = null)
     {
@@ -73,7 +97,7 @@ class AnnoyingNotificationService
     }
     
     /**
-     * Generate email HTML inline to avoid missing view
+     * Generate email HTML
      */
     private static function generateEmailHtml($user, $subject, $content, $order)
     {
@@ -83,25 +107,20 @@ class AnnoyingNotificationService
         $vendor = $content['vendor'] ?? ($order->vendor->business_name ?? 'N/A');
         $address = $content['address'] ?? ($order->delivery_address ?? 'N/A');
         
-        $adminUrl = route('admin.orders.show', $order->id ?? 0);
-        $vendorUrl = route('vendor.orders.show', $order->id ?? 0);
-        $riderUrl = route('rider.deliveries.show', $order->id ?? 0);
-        $customerUrl = route('customer.orders.track', $order->id ?? 0);
-        
         $actionUrl = '#';
         if (isset($content['type'])) {
             switch ($content['type']) {
                 case 'order_placed':
-                    $actionUrl = $vendorUrl;
+                    $actionUrl = route('vendor.orders.show', $order->id ?? 0);
                     break;
                 case 'ready_for_pickup':
-                    $actionUrl = $adminUrl;
+                    $actionUrl = route('admin.orders.show', $order->id ?? 0);
                     break;
                 case 'rider_assigned':
-                    $actionUrl = $riderUrl;
+                    $actionUrl = route('rider.deliveries.show', $order->id ?? 0);
                     break;
                 case 'order_picked_up':
-                    $actionUrl = $customerUrl;
+                    $actionUrl = route('customer.orders.track', $order->id ?? 0);
                     break;
             }
         }
@@ -149,101 +168,109 @@ HTML;
     }
 
     /**
-     * Send PWA push notification (can wake phone)
+     * Send PWA push notification
      */
     public static function sendPushNotification($userId, $title, $body, $data = [])
     {
-        // Store in database for the specific user
-        $notification = Notification::create([
-            'user_id' => $userId,
-            'title' => $title,
-            'message' => $body,
-            'type' => $data['type'] ?? 'system',
-            'data' => $data,
-            'is_read' => false,
-        ]);
-        
-        // Store in cache for service worker polling
-        $userPendingKey = 'push_pending_' . $userId;
-        $existing = \Illuminate\Support\Facades\Cache::get($userPendingKey, []);
-        $existing[] = [
-            'id' => $notification->id,
-            'title' => $title,
-            'body' => $body,
-            'data' => $data,
-            'timestamp' => now()->toIso8601String(),
-            'vibrate' => [500, 300, 500, 300, 1000, 500, 300, 500, 300, 2000],
-            'require_interaction' => true,
-            'silent' => false,
-        ];
-        \Illuminate\Support\Facades\Cache::put($userPendingKey, $existing, 300);
-        
-        // Also store in session for immediate display on page load
-        // Only store for the user who is currently logged in
-        if (auth()->check() && auth()->id() == $userId) {
-            $stickyNotifications = session()->get('sticky_notifications', []);
-            $stickyNotifications[] = [
-                'id' => (string) $notification->id,
+        try {
+            $dbType = self::mapTypeToDb($data['type'] ?? 'system');
+            
+            $notification = Notification::create([
+                'user_id' => $userId,
                 'title' => $title,
                 'message' => $body,
-                'type' => $data['type'] ?? 'system',
-                'order_id' => $data['order_id'] ?? null,
-                'requires_confirmation' => true,
-                'blocking' => true,
-                'priority' => 'critical',
-                'created_at' => now()->toDateTimeString()
+                'type' => $dbType,
+                'data' => $data,
+                'is_read' => false,
+            ]);
+            
+            // Store in cache for service worker polling
+            $userPendingKey = 'push_pending_' . $userId;
+            $existing = \Illuminate\Support\Facades\Cache::get($userPendingKey, []);
+            $existing[] = [
+                'id' => $notification->id,
+                'title' => $title,
+                'body' => $body,
+                'data' => $data,
+                'timestamp' => now()->toIso8601String(),
+                'vibrate' => [500, 300, 500, 300, 1000, 500, 300, 500, 300, 2000],
+                'require_interaction' => true,
+                'silent' => false,
             ];
-            session()->put('sticky_notifications', $stickyNotifications);
+            \Illuminate\Support\Facades\Cache::put($userPendingKey, $existing, 300);
+            
+            // Store in session for current user
+            if (auth()->check() && auth()->id() == $userId) {
+                $stickyNotifications = session()->get('sticky_notifications', []);
+                $stickyNotifications[] = [
+                    'id' => (string) $notification->id,
+                    'title' => $title,
+                    'message' => $body,
+                    'type' => $data['type'] ?? 'system',
+                    'order_id' => $data['order_id'] ?? null,
+                    'requires_confirmation' => true,
+                    'blocking' => true,
+                    'priority' => 'critical',
+                    'created_at' => now()->toDateTimeString()
+                ];
+                session()->put('sticky_notifications', $stickyNotifications);
+            }
+            
+            Log::info('Push notification queued', ['user_id' => $userId, 'title' => $title]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send push notification', ['error' => $e->getMessage()]);
         }
-        
-        Log::info('Push notification queued', ['user_id' => $userId, 'title' => $title]);
     }
 
     /**
-     * Create STICKY modal notification that BLOCKS screen
+     * Create STICKY modal notification
      */
     public static function createStickyModal($userId, $title, $message, $type, $orderId = null)
     {
-        // Only create for the currently logged in user
-        if (!auth()->check() || auth()->id() != $userId) {
-            // Store in database for later retrieval
-            Notification::create([
+        try {
+            $dbType = self::mapTypeToDb($type);
+            
+            // Store in database
+            $notification = Notification::create([
                 'user_id' => $userId,
                 'title' => $title,
                 'message' => $message,
-                'type' => $type,
-                'data' => ['order_id' => $orderId, 'requires_attention' => true],
+                'type' => $dbType,
+                'data' => ['order_id' => $orderId, 'requires_attention' => true, 'original_type' => $type],
                 'is_read' => false,
             ]);
-            return;
+            
+            // Only show modal for currently logged in user
+            if (auth()->check() && auth()->id() == $userId) {
+                $stickyNotifications = session()->get('sticky_notifications', []);
+                $stickyNotifications[] = [
+                    'id' => (string) $notification->id,
+                    'title' => $title,
+                    'message' => $message,
+                    'type' => $type,
+                    'order_id' => $orderId,
+                    'requires_confirmation' => true,
+                    'blocking' => true,
+                    'priority' => 'critical',
+                    'created_at' => now()->toDateTimeString()
+                ];
+                
+                if (count($stickyNotifications) > 5) {
+                    $stickyNotifications = array_slice($stickyNotifications, -5);
+                }
+                
+                session()->put('sticky_notifications', $stickyNotifications);
+            }
+            
+            Log::info('Sticky modal created', [
+                'user_id' => $userId,
+                'type' => $type,
+                'order_id' => $orderId,
+                'notification_id' => $notification->id
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to create sticky modal', ['error' => $e->getMessage()]);
         }
-        
-        $stickyNotifications = session()->get('sticky_notifications', []);
-        $stickyNotifications[] = [
-            'id' => uniqid('sticky_'),
-            'title' => $title,
-            'message' => $message,
-            'type' => $type,
-            'order_id' => $orderId,
-            'requires_confirmation' => true,
-            'blocking' => true,
-            'priority' => 'critical',
-            'created_at' => now()->toDateTimeString()
-        ];
-        
-        // Limit to 5 notifications to prevent overflow
-        if (count($stickyNotifications) > 5) {
-            $stickyNotifications = array_slice($stickyNotifications, -5);
-        }
-        
-        session()->put('sticky_notifications', $stickyNotifications);
-        
-        Log::info('Sticky modal created', [
-            'user_id' => $userId,
-            'type' => $type,
-            'order_id' => $orderId,
-            'notification_id' => end($stickyNotifications)['id']
-        ]);
     }
     
     /**
