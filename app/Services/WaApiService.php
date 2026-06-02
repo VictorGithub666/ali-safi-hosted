@@ -26,6 +26,7 @@ class WaApiService
                 'base_uri' => "https://api.waapi.app/api/v1/instances/{$this->instanceId}/client/",
                 'timeout'  => 30.0,
             ]);
+            Log::info('WaAPI Service initialized', ['instance_id' => $this->instanceId]);
         } else {
             Log::warning('WaAPI credentials not configured. Please add WAAPI_INSTANCE_ID and WAAPI_API_TOKEN to your .env file');
         }
@@ -77,7 +78,7 @@ class WaApiService
             return $responseBody;
 
         } catch (ConnectException $e) {
-            // Connection error - API is unreachable
+            // Connection error - API is unreachable (this exception does NOT have hasResponse())
             $errorMessage = 'Connection failed: ' . $e->getMessage();
             Log::error('WaAPI: Connection error', [
                 'to' => $to,
@@ -86,7 +87,7 @@ class WaApiService
             return ['error' => true, 'message' => $errorMessage, 'type' => 'connection'];
             
         } catch (RequestException $e) {
-            // Request error - API responded with error status
+            // Request error - API responded with error status (this exception HAS hasResponse())
             $responseBody = null;
             if ($e->hasResponse()) {
                 $responseBody = $e->getResponse()->getBody()->getContents();
@@ -101,6 +102,15 @@ class WaApiService
             
         } catch (GuzzleException $e) {
             // Catch any other Guzzle exceptions
+            Log::error('WaAPI: Unexpected Guzzle error', [
+                'to' => $to,
+                'error_class' => get_class($e),
+                'error' => $e->getMessage(),
+            ]);
+            return ['error' => true, 'message' => $e->getMessage(), 'type' => 'guzzle_error'];
+            
+        } catch (\Exception $e) {
+            // Catch any other unexpected exceptions
             Log::error('WaAPI: Unexpected error', [
                 'to' => $to,
                 'error_class' => get_class($e),
