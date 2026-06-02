@@ -235,10 +235,11 @@ class OrderController extends Controller
                 // ============================================================
 
                 // Dispatch OrderPlaced event to notify vendor
-                $order->load(['vendor.user', 'customer', 'items.product']);
-                event(new OrderPlaced($order));
+                // NOTE: Removed event dispatch to prevent automatic notification creation
+                // $order->load(['vendor.user', 'customer', 'items.product']);
+                // event(new OrderPlaced($order));
 
-                \Illuminate\Support\Facades\Log::info('OrderPlaced event dispatched', [
+                \Illuminate\Support\Facades\Log::info('Order created successfully without event dispatch', [
                     'order_id' => $order->id,
                     'order_number' => $order->order_number,
                     'vendor_id' => $vendor->id
