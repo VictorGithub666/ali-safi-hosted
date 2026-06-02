@@ -44,7 +44,7 @@ class WaApiService
     /**
      * Send a text message to a WhatsApp number.
      *
-     * @param string $to The recipient's WhatsApp number in international format (e.g., 254748109181)
+     * @param string $to The recipient's WhatsApp number in international format (e.g., 254748109181 or +254748109181)
      * @param string $message The message content
      * @return array
      */
@@ -56,62 +56,88 @@ class WaApiService
             return ['error' => true, 'message' => 'WaAPI not configured', 'type' => 'config'];
         }
 
-        // Ensure the number is in the correct format.
-        $to = ltrim($to, '+'); // Remove '+' if present.
-        $to = str_replace('@c.us', '', $to); // Remove any suffix if present.
+        // Normalize the phone number format for WaAPI
+        // Remove '+' if present
+        $phoneNumber = ltrim($to, '+');
+        // Remove any existing @c.us suffix
+        $phoneNumber = str_replace('@c.us', '', $phoneNumber);
+        // Add the required @c.us suffix for WaAPI
+        $chatId = $phoneNumber . '@c.us';
 
         $payload = [
-            'to' => $to,
-            'text' => $message,
+            'chatId' => $chatId,
+            'message' => $message,
         ];
 
+        Log::info('WaAPI: Sending message', [
+            'to' => $to,
+            'normalized_to' => $chatId,
+            'message_length' => strlen($message),
+        ]);
+
         try {
-            $response = $this->client->post('send-text', [
+            $response = $this->client->post('action/send-message', [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $this->apiToken,
                     'Accept' => 'application/json',
+                    'Content-Type' => 'application/json',
                 ],
                 'json' => $payload,
             ]);
 
             $responseBody = json_decode($response->getBody()->getContents(), true);
-            Log::info('WaAPI: Message sent successfully', ['to' => $to, 'response' => $responseBody]);
+            Log::info('WaAPI: Message sent successfully', [
+                'to' => $chatId,
+                'response_status' => $responseBody['status'] ?? 'unknown',
+                'response' => $responseBody
+            ]);
             return $responseBody;
 
         } catch (ConnectException $e) {
             // Connection error - API is unreachable (this exception does NOT have hasResponse())
             $errorMessage = 'Connection failed: ' . $e->getMessage();
             Log::error('WaAPI: Connection error', [
-                'to' => $to,
+                'to' => $chatId,
                 'error' => $errorMessage,
+                'request_payload' => $payload,
             ]);
             return ['error' => true, 'message' => $errorMessage, 'type' => 'connection'];
             
         } catch (BadResponseException $e) {
             // Bad response error - API responded with error status (this exception HAS hasResponse())
             $responseBody = null;
+            $statusCode = null;
+            
             if ($e->hasResponse()) {
+                $statusCode = $e->getResponse()->getStatusCode();
                 try {
                     $responseBody = $e->getResponse()->getBody()->getContents();
+                    // Try to decode as JSON for better logging
+                    $decoded = json_decode($responseBody, true);
+                    if (is_array($decoded)) {
+                        $responseBody = $decoded;
+                    }
                 } catch (\Exception $bodyException) {
                     $responseBody = 'Could not read response body: ' . $bodyException->getMessage();
                 }
             }
             
             Log::error('WaAPI: Bad response from API', [
-                'to' => $to,
-                'status_code' => $e->getResponse()->getStatusCode() ?? 'unknown',
+                'to' => $chatId,
+                'status_code' => $statusCode,
                 'error' => $e->getMessage(),
                 'response_body' => $responseBody,
+                'request_payload' => $payload,
             ]);
-            return ['error' => true, 'message' => $e->getMessage(), 'response' => $responseBody, 'type' => 'bad_response'];
+            return ['error' => true, 'message' => $e->getMessage(), 'response' => $responseBody, 'type' => 'bad_response', 'status_code' => $statusCode];
             
         } catch (GuzzleException $e) {
             // Catch any other Guzzle exceptions safely
             $errorDetails = [
-                'to' => $to,
+                'to' => $chatId,
                 'error_class' => get_class($e),
                 'error' => $e->getMessage(),
+                'request_payload' => $payload,
             ];
             
             // Safely check for response body if exception has it
@@ -129,9 +155,10 @@ class WaApiService
         } catch (\Exception $e) {
             // Catch any other unexpected exceptions
             Log::error('WaAPI: Unexpected error', [
-                'to' => $to,
+                'to' => $chatId,
                 'error_class' => get_class($e),
                 'error' => $e->getMessage(),
+                'request_payload' => $payload,
             ]);
             return ['error' => true, 'message' => $e->getMessage(), 'type' => 'unexpected'];
         }

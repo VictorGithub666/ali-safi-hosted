@@ -601,39 +601,200 @@ class OrderController extends Controller
             return;
         }
 
-        // Prepare the message content
-        $orderDetails = "🆕 *NEW ORDER #{$order->order_number}* 🆕\n\n";
-        $orderDetails .= "*Customer:* {$order->customer->name}\n";
-        $orderDetails .= "*Phone:* {$order->phone}\n";
-        $orderDetails .= "*Delivery:* {$order->delivery_address}\n";
-        $orderDetails .= "*Location:* {$order->ward}, {$order->sub_county}, {$order->county}\n";
-        $orderDetails .= "*Total:* KES " . number_format($order->total, 2) . "\n\n";
-        $orderDetails .= "⚠️ Status: *PENDING* - Action required.\n";
-        $orderDetails .= "🔗 View Order: " . route('admin.orders.show', $order);
+        // Prepare the message content for admin
+        $adminMessage = "🆕 *NEW ORDER #{$order->order_number}* 🆕\n\n";
+        $adminMessage .= "*Customer:* {$order->customer->name}\n";
+        $adminMessage .= "*Phone:* {$order->phone}\n";
+        $adminMessage .= "*Delivery:* {$order->delivery_address}\n";
+        $adminMessage .= "*Location:* {$order->ward}, {$order->sub_county}, {$order->county}\n";
+        $adminMessage .= "*Total:* KES " . number_format($order->total, 2) . "\n\n";
+        $adminMessage .= "⚠️ Status: *PENDING* - Action required.\n";
+        $adminMessage .= "🔗 View Order: " . route('admin.orders.show', $order);
 
-        // Your static trial receiver number for testing
-        $testReceiver = '254748109181';
+        // Prepare the message content for vendor
+        $vendorMessage = "🆕 *NEW ORDER #{$order->order_number}* 🆕\n\n";
+        $vendorMessage .= "*Customer:* {$order->customer->name}\n";
+        $vendorMessage .= "*Phone:* {$order->phone}\n";
+        $vendorMessage .= "*Delivery:* {$order->delivery_address}\n";
+        $vendorMessage .= "*Location:* {$order->ward}, {$order->sub_county}, {$order->county}\n";
+        $vendorMessage .= "*Total:* KES " . number_format($order->total, 2) . "\n\n";
+        $vendorMessage .= "⚠️ Status: *PENDING* - Please prepare the order.\n";
+        $vendorMessage .= "🔗 View Order: " . route('vendor.orders.show', $order);
+
+        // Send to admin
+        $this->sendAdminNotification($order, $adminMessage);
         
-        Log::info("Attempting to send WhatsApp notification to test number: {$testReceiver} for Order #{$order->order_number}");
-        
+        // Send to vendor
+        $this->sendVendorNotification($order, $vendorMessage);
+    }
+
+    /**
+     * Send WhatsApp notification to admin users
+     */
+    protected function sendAdminNotification(Order $order, string $message): void
+    {
         try {
-            $result = $this->waApiService->sendTextMessage($testReceiver, $orderDetails);
-            
-            if (isset($result['error']) && $result['error']) {
-                Log::warning("WhatsApp notification not sent for Order #{$order->order_number}", [
-                    'type' => $result['type'] ?? 'unknown',
-                    'message' => $result['message'] ?? 'Unknown error'
+            // Get all admin users with phone numbers
+            $adminUsers = \App\Models\User::where('user_type', 'admin')
+                ->whereNotNull('phone')
+                ->get();
+
+            if ($adminUsers->isEmpty()) {
+                Log::warning('No admin users with phone numbers found for WhatsApp notification', [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number
                 ]);
-            } else {
-                Log::info("WhatsApp notification sent successfully for Order #{$order->order_number}");
+                return;
+            }
+
+            foreach ($adminUsers as $admin) {
+                $phoneNumber = $this->normalizePhoneNumber($admin->phone);
+                
+                if (!$phoneNumber) {
+                    Log::warning('Invalid admin phone number, skipping', [
+                        'order_id' => $order->id,
+                        'admin_id' => $admin->id,
+                        'phone' => $admin->phone
+                    ]);
+                    continue;
+                }
+
+                Log::info("Sending WhatsApp notification to admin", [
+                    'order_id' => $order->id,
+                    'admin_id' => $admin->id,
+                    'phone' => $phoneNumber
+                ]);
+
+                $result = $this->waApiService->sendTextMessage($phoneNumber, $message);
+
+                if (isset($result['error']) && $result['error']) {
+                    Log::warning("Failed to send WhatsApp notification to admin", [
+                        'order_id' => $order->id,
+                        'admin_id' => $admin->id,
+                        'phone' => $phoneNumber,
+                        'error_type' => $result['type'] ?? 'unknown',
+                        'message' => $result['message'] ?? 'Unknown error'
+                    ]);
+                } else {
+                    Log::info("WhatsApp notification sent successfully to admin", [
+                        'order_id' => $order->id,
+                        'admin_id' => $admin->id,
+                        'phone' => $phoneNumber
+                    ]);
+                }
             }
         } catch (\Throwable $e) {
-            // Catch any unexpected errors to prevent order placement failure
-            // This service is non-critical, so we only log and continue
-            Log::warning("Error sending WhatsApp notification for Order #{$order->order_number}", [
+            Log::warning("Error sending WhatsApp notification to admin", [
+                'order_id' => $order->id,
                 'error_class' => get_class($e),
                 'error' => $e->getMessage()
             ]);
         }
+    }
+
+    /**
+     * Send WhatsApp notification to vendor
+     */
+    protected function sendVendorNotification(Order $order, string $message): void
+    {
+        try {
+            $order->load('vendor.user');
+            $vendor = $order->vendor;
+
+            if (!$vendor) {
+                Log::warning('No vendor found for order', ['order_id' => $order->id]);
+                return;
+            }
+
+            // Try vendor business phone first, then user phone
+            $vendorPhone = $vendor->business_phone ?? $vendor->user?->phone;
+
+            if (!$vendorPhone) {
+                Log::warning('No vendor phone number found for WhatsApp notification', [
+                    'order_id' => $order->id,
+                    'vendor_id' => $vendor->id
+                ]);
+                return;
+            }
+
+            $phoneNumber = $this->normalizePhoneNumber($vendorPhone);
+
+            if (!$phoneNumber) {
+                Log::warning('Invalid vendor phone number, skipping', [
+                    'order_id' => $order->id,
+                    'vendor_id' => $vendor->id,
+                    'phone' => $vendorPhone
+                ]);
+                return;
+            }
+
+            Log::info("Sending WhatsApp notification to vendor", [
+                'order_id' => $order->id,
+                'vendor_id' => $vendor->id,
+                'phone' => $phoneNumber
+            ]);
+
+            $result = $this->waApiService->sendTextMessage($phoneNumber, $message);
+
+            if (isset($result['error']) && $result['error']) {
+                Log::warning("Failed to send WhatsApp notification to vendor", [
+                    'order_id' => $order->id,
+                    'vendor_id' => $vendor->id,
+                    'phone' => $phoneNumber,
+                    'error_type' => $result['type'] ?? 'unknown',
+                    'message' => $result['message'] ?? 'Unknown error'
+                ]);
+            } else {
+                Log::info("WhatsApp notification sent successfully to vendor", [
+                    'order_id' => $order->id,
+                    'vendor_id' => $vendor->id,
+                    'phone' => $phoneNumber
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning("Error sending WhatsApp notification to vendor", [
+                'order_id' => $order->id,
+                'error_class' => get_class($e),
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Normalize phone number to WaAPI format (254... without +)
+     */
+    protected function normalizePhoneNumber(?string $phone): ?string
+    {
+        if (!$phone) {
+            return null;
+        }
+
+        // Remove all spaces, dashes, parentheses
+        $phone = preg_replace('/[\s\-\(\)]/i', '', $phone);
+
+        // Remove + if present
+        $phone = ltrim($phone, '+');
+
+        // If number starts with 0, remove it and add 254
+        if (str_starts_with($phone, '0')) {
+            $phone = '254' . substr($phone, 1);
+        }
+
+        // Ensure it starts with 254 (Kenya country code)
+        if (!str_starts_with($phone, '254')) {
+            // If no country code, assume Kenya
+            $phone = '254' . $phone;
+        }
+
+        // Validate the format: 254 + 9 digits = 12 characters total
+        if (strlen($phone) !== 12 || !ctype_digit($phone)) {
+            Log::warning('Invalid phone number format after normalization', [
+                'original' => $phone,
+                'length' => strlen($phone)
+            ]);
+            return null;
+        }
+
+        return $phone;
     }
 }
