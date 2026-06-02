@@ -512,73 +512,7 @@
             });
         </script>
 
-        <!-- Annoying Notifications JS -->
-        <script>
-            // Global audio element for annoying sounds
-            let annoyingAudio = null;
-            
-            function playAnnoyingSound() {
-                if (annoyingAudio) {
-                    annoyingAudio.pause();
-                    annoyingAudio.currentTime = 0;
-                }
-                annoyingAudio = new Audio('{{ asset("sounds/alarm_sound.mp3") }}');
-                annoyingAudio.loop = true;
-                annoyingAudio.volume = 1.0;
-                annoyingAudio.play().catch(e => console.log('Audio play failed', e));
-            }
-            
-            function stopAnnoyingSound() {
-                if (annoyingAudio) {
-                    annoyingAudio.pause();
-                    annoyingAudio = null;
-                }
-            }
-            
-            function vibrateDevice() {
-                if (navigator.vibrate) {
-                    navigator.vibrate([500, 200, 500, 200, 1000, 200, 500, 200, 500, 200, 2000]);
-                }
-            }
-            
-            function acknowledgeUrgentNotification(notificationId, orderId, type) {
-                stopAnnoyingSound();
-                
-                fetch('{{ route("notifications.acknowledge") }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({ 
-                        notification_id: notificationId, 
-                        order_id: orderId,
-                        type: type
-                    })
-                }).then(response => response.json())
-                  .then(data => {
-                      document.getElementById(`annoyingModal${notificationId}`).remove();
-                      if (orderId && type === 'admin') {
-                          window.location.href = '{{ url("/admin/orders") }}/' + orderId;
-                      } else if (orderId && type === 'vendor') {
-                          window.location.href = '{{ url("/vendor/orders") }}/' + orderId;
-                      } else if (orderId && type === 'rider') {
-                          window.location.href = '{{ url("/rider/deliveries") }}/' + orderId;
-                      } else if (orderId && type === 'customer') {
-                          window.location.href = '{{ url("/customer/orders/track") }}/' + orderId;
-                      }
-                  })
-                  .catch(error => {
-                      console.error('Error:', error);
-                      document.getElementById(`annoyingModal${notificationId}`).remove();
-                  });
-            }
-            
-            function dismissAnnoyingModal(notificationId) {
-                stopAnnoyingSound();
-                document.getElementById(`annoyingModal${notificationId}`).remove();
-            }
-        </script>
+        
 
         
 
