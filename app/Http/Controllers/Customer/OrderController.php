@@ -249,9 +249,7 @@ class OrderController extends Controller
                     $this->sendMpesaPrompt($order, $request->mpesa_number);
                 }
 
-                if ($order->status === 'pending') {
-                $this->sendWhatsAppNotifications($order);
-                }
+               
                 
                 $orders[] = $order;
             }
@@ -261,6 +259,15 @@ class OrderController extends Controller
             Cart::where('user_id', Auth::id())->delete();
 
             DB::commit();
+
+            try {
+                    $this->sendWhatsAppNotifications($order);
+                } catch (\Exception $e) {
+                    Log::error('WhatsApp notification failed but order was placed', [
+                        'order_id' => $order->id,
+                        'error' => $e->getMessage()
+                    ]);
+                }
             
             \Illuminate\Support\Facades\Log::info('Order placement successful, committing transaction');
             return redirect()->route('customer.orders')
@@ -580,6 +587,7 @@ class OrderController extends Controller
     }
 
         
+    
     protected function sendWhatsAppNotifications(Order $order): void
     {
         // Prepare the message content
@@ -587,31 +595,32 @@ class OrderController extends Controller
         $orderDetails .= "*Customer:* {$order->customer->name}\n";
         $orderDetails .= "*Phone:* {$order->phone}\n";
         $orderDetails .= "*Delivery:* {$order->delivery_address}\n";
+        $orderDetails .= "*Location:* {$order->ward}, {$order->sub_county}, {$order->county}\n";
         $orderDetails .= "*Total:* KES " . number_format($order->total, 2) . "\n\n";
-        $orderDetails .= "⚠️ Status: *Pending* - Requires confirmation.\n";
-        $orderDetails .= "🔗 View Order: " . route('admin.orders.show', $order); // Or vendor route
+        $orderDetails .= "⚠️ Status: *PENDING* - Action required.\n";
+        $orderDetails .= "🔗 View Order: " . route('admin.orders.show', $order);
 
-        // 1. Send to Vendor
-        $vendorPhone = $order->vendor->business_phone ?? $order->vendor->user->phone;
-        if ($vendorPhone) {
-            $this->waApiService->sendTextMessage($vendorPhone, $orderDetails);
-            Log::info("WhatsApp notification sent to vendor for Order #{$order->order_number}");
-        } else {
-            Log::warning("Vendor phone number not found for Order #{$order->order_number}");
-        }
-
-        // 2. Send to Admins (You can fetch admin numbers from settings)
-        $adminPhones = \App\Models\Setting::get('admin_whatsapp_numbers', '');
-        if ($adminPhones) {
-            $adminNumbers = array_map('trim', explode(',', $adminPhones));
-            foreach ($adminNumbers as $adminPhone) {
-                if ($adminPhone) {
-                    $this->waApiService->sendTextMessage($adminPhone, $orderDetails);
-                    Log::info("WhatsApp notification sent to admin ({$adminPhone}) for Order #{$order->order_number}");
-                }
+        // Your static trial receiver number for testing
+        $testReceiver = '254748109181';
+        
+        Log::info("Attempting to send WhatsApp notification to test number: {$testReceiver} for Order #{$order->order_number}");
+        
+        try {
+            $result = $this->waApiService->sendTextMessage($testReceiver, $orderDetails);
+            
+            if (isset($result['error'])) {
+                Log::error("Failed to send WhatsApp test message for Order #{$order->order_number}", [
+                    'error_type' => $result['type'] ?? 'unknown',
+                    'message' => $result['message']
+                ]);
+            } else {
+                Log::info("WhatsApp test message sent successfully for Order #{$order->order_number}");
             }
-        } else {
-            Log::warning("No admin WhatsApp numbers configured in settings.");
+        } catch (\Exception $e) {
+            // Catch any unexpected errors to prevent order placement failure
+            Log::error("Unexpected error sending WhatsApp message for Order #{$order->order_number}", [
+                'error' => $e->getMessage()
+            ]);
         }
     }
 }

@@ -5,6 +5,7 @@
 .env.production
 .phpactor.json
 .phpunit.result.cache
+laravel_complete_export*
 /.cursor/
 /.idea
 /.nova

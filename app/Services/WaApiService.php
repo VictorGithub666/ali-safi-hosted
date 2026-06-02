@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Facades\Log;
 
 class WaApiService
@@ -14,8 +16,8 @@ class WaApiService
 
     public function __construct()
     {
-        // You will store your credentials in the .env file
-        $this->instanceId = config('services.waapi.instance_id', env('WAAPI_INSTANCE_ID'));
+        // Store your credentials in the .env file
+        $this->instanceId = config('services.waapi.instance_id', env('WAAPI_INSTANCE_ID', '94864'));
         $this->apiToken = config('services.waapi.api_token', env('WAAPI_API_TOKEN'));
         
         $this->client = new Client([
@@ -34,7 +36,6 @@ class WaApiService
     public function sendTextMessage(string $to, string $message): array
     {
         // Ensure the number is in the correct format.
-        // WaAPI's documentation often expects the number with the country code and without '+'.
         $to = ltrim($to, '+'); // Remove '+' if present.
         $to = str_replace('@c.us', '', $to); // Remove any suffix if present.
 
@@ -56,13 +57,37 @@ class WaApiService
             Log::info('WaAPI: Message sent successfully', ['to' => $to, 'response' => $responseBody]);
             return $responseBody;
 
-        } catch (GuzzleException $e) {
-            Log::error('WaAPI: Failed to send message', [
+        } catch (ConnectException $e) {
+            // Connection error - API is unreachable
+            $errorMessage = 'Connection failed: ' . $e->getMessage();
+            Log::error('WaAPI: Connection error', [
+                'to' => $to,
+                'error' => $errorMessage,
+            ]);
+            return ['error' => true, 'message' => $errorMessage, 'type' => 'connection'];
+            
+        } catch (RequestException $e) {
+            // Request error - API responded with error status
+            $responseBody = null;
+            if ($e->hasResponse()) {
+                $responseBody = $e->getResponse()->getBody()->getContents();
+            }
+            
+            Log::error('WaAPI: Request failed', [
                 'to' => $to,
                 'error' => $e->getMessage(),
-                'response_body' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : null,
+                'response_body' => $responseBody,
             ]);
-            return ['error' => true, 'message' => $e->getMessage()];
+            return ['error' => true, 'message' => $e->getMessage(), 'response' => $responseBody, 'type' => 'request'];
+            
+        } catch (GuzzleException $e) {
+            // Catch any other Guzzle exceptions
+            Log::error('WaAPI: Unexpected error', [
+                'to' => $to,
+                'error_class' => get_class($e),
+                'error' => $e->getMessage(),
+            ]);
+            return ['error' => true, 'message' => $e->getMessage(), 'type' => 'unexpected'];
         }
     }
 }
