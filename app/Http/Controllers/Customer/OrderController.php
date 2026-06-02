@@ -618,17 +618,19 @@ class OrderController extends Controller
         try {
             $result = $this->waApiService->sendTextMessage($testReceiver, $orderDetails);
             
-            if (isset($result['error'])) {
-                Log::error("Failed to send WhatsApp test message for Order #{$order->order_number}", [
-                    'error_type' => $result['type'] ?? 'unknown',
-                    'message' => $result['message']
+            if (isset($result['error']) && $result['error']) {
+                Log::warning("WhatsApp notification not sent for Order #{$order->order_number}", [
+                    'type' => $result['type'] ?? 'unknown',
+                    'message' => $result['message'] ?? 'Unknown error'
                 ]);
             } else {
-                Log::info("WhatsApp test message sent successfully for Order #{$order->order_number}");
+                Log::info("WhatsApp notification sent successfully for Order #{$order->order_number}");
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // Catch any unexpected errors to prevent order placement failure
-            Log::error("Unexpected error sending WhatsApp message for Order #{$order->order_number}", [
+            // This service is non-critical, so we only log and continue
+            Log::warning("Error sending WhatsApp notification for Order #{$order->order_number}", [
+                'error_class' => get_class($e),
                 'error' => $e->getMessage()
             ]);
         }
