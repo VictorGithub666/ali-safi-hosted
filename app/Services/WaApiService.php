@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\BadResponseException;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
@@ -86,27 +87,43 @@ class WaApiService
             ]);
             return ['error' => true, 'message' => $errorMessage, 'type' => 'connection'];
             
-        } catch (RequestException $e) {
-            // Request error - API responded with error status (this exception HAS hasResponse())
+        } catch (BadResponseException $e) {
+            // Bad response error - API responded with error status (this exception HAS hasResponse())
             $responseBody = null;
             if ($e->hasResponse()) {
-                $responseBody = $e->getResponse()->getBody()->getContents();
+                try {
+                    $responseBody = $e->getResponse()->getBody()->getContents();
+                } catch (\Exception $bodyException) {
+                    $responseBody = 'Could not read response body: ' . $bodyException->getMessage();
+                }
             }
             
-            Log::error('WaAPI: Request failed', [
+            Log::error('WaAPI: Bad response from API', [
                 'to' => $to,
+                'status_code' => $e->getResponse()->getStatusCode() ?? 'unknown',
                 'error' => $e->getMessage(),
                 'response_body' => $responseBody,
             ]);
-            return ['error' => true, 'message' => $e->getMessage(), 'response' => $responseBody, 'type' => 'request'];
+            return ['error' => true, 'message' => $e->getMessage(), 'response' => $responseBody, 'type' => 'bad_response'];
             
         } catch (GuzzleException $e) {
-            // Catch any other Guzzle exceptions
-            Log::error('WaAPI: Unexpected Guzzle error', [
+            // Catch any other Guzzle exceptions safely
+            $errorDetails = [
                 'to' => $to,
                 'error_class' => get_class($e),
                 'error' => $e->getMessage(),
-            ]);
+            ];
+            
+            // Safely check for response body if exception has it
+            if ($e instanceof BadResponseException && $e->hasResponse()) {
+                try {
+                    $errorDetails['response_body'] = $e->getResponse()->getBody()->getContents();
+                } catch (\Exception $bodyException) {
+                    $errorDetails['response_body'] = 'Could not read response body';
+                }
+            }
+            
+            Log::error('WaAPI: Guzzle error', $errorDetails);
             return ['error' => true, 'message' => $e->getMessage(), 'type' => 'guzzle_error'];
             
         } catch (\Exception $e) {
