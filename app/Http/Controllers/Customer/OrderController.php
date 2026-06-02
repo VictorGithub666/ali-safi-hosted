@@ -10,6 +10,7 @@ use App\Models\Cart;
 use App\Events\OrderPlaced;  
 use App\Services\OrderMatchingService;
 use App\Services\MpesaService;
+use App\Services\WaApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -20,10 +21,11 @@ class OrderController extends Controller
     protected $matchingService;
     protected $mpesaService;
 
-    public function __construct(OrderMatchingService $matchingService, MpesaService $mpesaService)
+    public function __construct(OrderMatchingService $matchingService, MpesaService $mpesaService, WaApiService $waApiService)
     {
         $this->matchingService = $matchingService;
         $this->mpesaService = $mpesaService;
+        $this->waApiService = $waApiService;
     }
 
     public function index()
@@ -245,6 +247,10 @@ class OrderController extends Controller
                 // Send M-Pesa prompt if payment method is M-Pesa
                 if ($request->payment_method === 'mpesa' && $request->mpesa_number) {
                     $this->sendMpesaPrompt($order, $request->mpesa_number);
+                }
+
+                if ($order->status === 'pending') {
+                $this->sendWhatsAppNotifications($order);
                 }
                 
                 $orders[] = $order;
@@ -570,6 +576,42 @@ class OrderController extends Controller
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+        
+    protected function sendWhatsAppNotifications(Order $order): void
+    {
+        // Prepare the message content
+        $orderDetails = "🆕 *NEW ORDER #{$order->order_number}* 🆕\n\n";
+        $orderDetails .= "*Customer:* {$order->customer->name}\n";
+        $orderDetails .= "*Phone:* {$order->phone}\n";
+        $orderDetails .= "*Delivery:* {$order->delivery_address}\n";
+        $orderDetails .= "*Total:* KES " . number_format($order->total, 2) . "\n\n";
+        $orderDetails .= "⚠️ Status: *Pending* - Requires confirmation.\n";
+        $orderDetails .= "🔗 View Order: " . route('admin.orders.show', $order); // Or vendor route
+
+        // 1. Send to Vendor
+        $vendorPhone = $order->vendor->business_phone ?? $order->vendor->user->phone;
+        if ($vendorPhone) {
+            $this->waApiService->sendTextMessage($vendorPhone, $orderDetails);
+            Log::info("WhatsApp notification sent to vendor for Order #{$order->order_number}");
+        } else {
+            Log::warning("Vendor phone number not found for Order #{$order->order_number}");
+        }
+
+        // 2. Send to Admins (You can fetch admin numbers from settings)
+        $adminPhones = \App\Models\Setting::get('admin_whatsapp_numbers', '');
+        if ($adminPhones) {
+            $adminNumbers = array_map('trim', explode(',', $adminPhones));
+            foreach ($adminNumbers as $adminPhone) {
+                if ($adminPhone) {
+                    $this->waApiService->sendTextMessage($adminPhone, $orderDetails);
+                    Log::info("WhatsApp notification sent to admin ({$adminPhone}) for Order #{$order->order_number}");
+                }
+            }
+        } else {
+            Log::warning("No admin WhatsApp numbers configured in settings.");
         }
     }
 }
