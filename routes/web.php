@@ -30,9 +30,7 @@ Route::get('/', function () {
 // Public vendor shop route
 Route::get('/shop/{vendor}', [ProductController::class, 'vendorShop'])->name('shop.vendor');
 
-// Notification routes
-Route::post('/notifications/acknowledge', [NotificationController::class, 'acknowledge'])->middleware('auth')->name('notifications.acknowledge');
-Route::get('/notifications/check', [NotificationController::class, 'check'])->middleware('auth')->name('notifications.check');
+
 
 // Authentication routes
 Route::middleware('guest')->group(function () {

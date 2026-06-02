@@ -24,17 +24,13 @@ class EventServiceProvider extends ServiceProvider
             SendEmailVerificationNotification::class,
         ],
         OrderStatusUpdated::class => [
-            NotifyAdminAnnoyingly::class,
-            NotifyCustomerAnnoyingly::class,
             DeductProductStockOnDelivery::class,
         ],
         OrderPlaced::class => [
             SendVendorWhatsAppNotification::class,
             SendAdminWhatsAppNotification::class,
-            NotifyVendorAnnoyingly::class,
         ],
         RiderAssigned::class => [
-            NotifyRiderAnnoyingly::class,
         ],
     ];
 
