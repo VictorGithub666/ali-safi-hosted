@@ -42,6 +42,11 @@ return [
         'maps_api_key' => env('GOOGLE_MAPS_API_KEY'),
     ],
 
+    'waapi' => [
+    'instance_id' => env('WAAPI_INSTANCE_ID'),
+    'api_token' => env('WAAPI_API_TOKEN'),
+],
+
     'mpesa' => [
     'consumer_key' => env('MPESA_CONSUMER_KEY'),
     'consumer_secret' => env('MPESA_CONSUMER_SECRET'),

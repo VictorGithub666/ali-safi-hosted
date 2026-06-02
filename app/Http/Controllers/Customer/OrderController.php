@@ -588,8 +588,18 @@ class OrderController extends Controller
 
         
     
+
     protected function sendWhatsAppNotifications(Order $order): void
     {
+        // Check if WaAPI is configured
+        if (!$this->waApiService->isConfigured()) {
+            Log::info('WaAPI not configured, skipping WhatsApp notification', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number
+            ]);
+            return;
+        }
+
         // Prepare the message content
         $orderDetails = "🆕 *NEW ORDER #{$order->order_number}* 🆕\n\n";
         $orderDetails .= "*Customer:* {$order->customer->name}\n";

@@ -10,20 +10,33 @@ use Illuminate\Support\Facades\Log;
 
 class WaApiService
 {
-    protected Client $client;
-    protected string $instanceId;
-    protected string $apiToken;
+    protected ?Client $client = null;
+    protected ?string $instanceId = null;
+    protected ?string $apiToken = null;
 
     public function __construct()
     {
-        // Store your credentials in the .env file
-        $this->instanceId = config('services.waapi.instance_id', env('WAAPI_INSTANCE_ID', '94864'));
-        $this->apiToken = config('services.waapi.api_token', env('WAAPI_API_TOKEN'));
+        // Get credentials from config (which reads from .env)
+        $this->instanceId = config('services.waapi.instance_id');
+        $this->apiToken = config('services.waapi.api_token');
         
-        $this->client = new Client([
-            'base_uri' => "https://api.waapi.app/api/v1/instances/{$this->instanceId}/client/",
-            'timeout'  => 30.0,
-        ]);
+        // Only initialize client if credentials are present
+        if ($this->instanceId && $this->apiToken) {
+            $this->client = new Client([
+                'base_uri' => "https://api.waapi.app/api/v1/instances/{$this->instanceId}/client/",
+                'timeout'  => 30.0,
+            ]);
+        } else {
+            Log::warning('WaAPI credentials not configured. Please add WAAPI_INSTANCE_ID and WAAPI_API_TOKEN to your .env file');
+        }
+    }
+
+    /**
+     * Check if WaAPI is configured
+     */
+    public function isConfigured(): bool
+    {
+        return $this->client !== null && $this->instanceId && $this->apiToken;
     }
 
     /**
@@ -35,6 +48,12 @@ class WaApiService
      */
     public function sendTextMessage(string $to, string $message): array
     {
+        // Check if WaAPI is configured
+        if (!$this->isConfigured()) {
+            Log::warning('WaAPI not configured, message not sent', ['to' => $to]);
+            return ['error' => true, 'message' => 'WaAPI not configured', 'type' => 'config'];
+        }
+
         // Ensure the number is in the correct format.
         $to = ltrim($to, '+'); // Remove '+' if present.
         $to = str_replace('@c.us', '', $to); // Remove any suffix if present.
